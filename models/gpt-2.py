@@ -196,7 +196,7 @@ if __name__ == '__main__':
   context = "Hello, I'm a language model,"
   idx = model.encode(context, device)
 
-  out = model.generate(idx, 3000, num_return_sequences=1, top_k=50)
+  out = model.generate(idx, max_length, num_return_sequences, top_k=50)
   for i, sentence in enumerate(model.decode(out)):
     print(f'sample {i+1}:', sentence)
     print()
