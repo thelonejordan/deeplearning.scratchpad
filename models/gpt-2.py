@@ -17,7 +17,6 @@ from torch import nn, Tensor
 from torch.nn import functional as F
 
 class CausalSelfAttention(nn.Module):
-
   def __init__(self, config: GPTConfig):
     super().__init__()
     assert config.n_embd % config.n_head == 0
@@ -44,7 +43,6 @@ class CausalSelfAttention(nn.Module):
     return y
 
 class MLP(nn.Module):
-
   def __init__(self, config: GPTConfig):
     super().__init__()
     self.c_fc = nn.Linear(config.n_embd, config.n_embd * 4)
@@ -56,7 +54,6 @@ class MLP(nn.Module):
     return x
 
 class Block(nn.Module):
-
   def __init__(self, config: GPTConfig):
     super().__init__()
     self.ln_1 = nn.LayerNorm(config.n_embd, eps=config.norm_eps)
@@ -69,13 +66,10 @@ class Block(nn.Module):
     x = x + self.mlp(self.ln_2(x))
     return x
 
-class GPT(nn.Module):
-
-  def __init__(self, config: GPTConfig) -> None:
+class Transformer(nn.Module):
+  def __init__(self, config: GPTConfig):
     super().__init__()
     self.config = config
-    self.tokenizer = tiktoken.get_encoding('gpt2')
-
     self.transformer = nn.ModuleDict(dict(
         wte = nn.Embedding(config.vocab_size, config.n_embd),
         wpe = nn.Embedding(config.block_size, config.n_embd),
@@ -85,19 +79,6 @@ class GPT(nn.Module):
     self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
     self.transformer.wte.weight = self.lm_head.weight
     print("number of parameters: %.2fM" % (self.get_num_params()/1e6,))
-
-  def get_num_params(self, non_embedding=True):
-    n_params = sum(p.numel() for p in self.parameters())
-    if non_embedding:
-        n_params -= self.transformer.wpe.weight.numel()
-    return n_params
-
-  def encode(self, input, device='cpu'):
-    batch = [input] if isinstance(input, str) else input
-    return torch.tensor(self.tokenizer.encode_batch(batch), dtype=torch.long, device=device)
-
-  def decode(self, idx: Tensor):
-    return self.tokenizer.decode_batch(idx.tolist())
 
   def forward(self, idx: Tensor):
     device = idx.device
@@ -115,8 +96,39 @@ class GPT(nn.Module):
   def get_loss(x: Tensor, y: Tensor):
     return F.cross_entropy(x.view(-1, x.size(-1)), y.to(x.device).view(-1))
 
+  def get_num_params(self, non_embedding=True):
+    n_params = sum(p.numel() for p in self.parameters())
+    if non_embedding:
+        n_params -= self.transformer.wpe.weight.numel()
+    return n_params
+
+@dataclass
+class GPTConfig:
+  block_size: int = 1024
+  vocab_size: int = 50257
+  n_layer: int = 12
+  n_head: int = 12
+  n_embd: int = 768
+  norm_eps: float = 1e-5
+
+class GPT2:
+  def __init__(self, model: Transformer) -> None:
+    self.model = model
+    self.tokenizer = tiktoken.get_encoding('gpt2')
+
+  def to(self, device):
+    self.model = self.model.to(device)
+    return self
+
+  def encode(self, input, device='cpu'):
+    batch = [input] if isinstance(input, str) else input
+    return torch.tensor(self.tokenizer.encode_batch(batch), dtype=torch.long, device=device)
+
+  def decode(self, idx: Tensor):
+    return self.tokenizer.decode_batch(idx.tolist())
+
   @staticmethod
-  def from_pretrained(model_type: str='gpt2'):
+  def from_pretrained(model_type: str='gpt2') -> GPT2:
     config_args = {
       'gpt2':         dict(n_layer=12, n_head=12, n_embd=768),  # 124M params
       'gpt2-medium':  dict(n_layer=24, n_head=16, n_embd=1024), # 350M params
@@ -124,11 +136,10 @@ class GPT(nn.Module):
       'gpt2-xl':      dict(n_layer=48, n_head=25, n_embd=1600), # 1558M params
     }[model_type]
     config = GPTConfig(**config_args)
-    model = GPT(config)
+    model = Transformer(config)
     sd = model.state_dict()
     sd_keys = sd.keys()
     sd_keys = [k for k in sd_keys if not k.endswith('.attn.bias')] # discard this mask / buffer, not a param
-
     from transformers import GPT2LMHeadModel
     model_hf = GPT2LMHeadModel.from_pretrained(model_type)
     sd_hf = model_hf.state_dict()
@@ -147,34 +158,25 @@ class GPT(nn.Module):
         assert sd_hf[k].shape == sd[k].shape
         with torch.no_grad():
           sd[k].copy_(sd_hf[k])
-    return model
+    return GPT2(model)
 
   @torch.no_grad()
   def generate(self, idx: Tensor, max_new_tokens, num_return_sequences=1, temperature=1.0, top_k=None):
     assert idx.size(0) == 1 and num_return_sequences >= 1 and temperature > 0.0
     idx = idx.repeat(num_return_sequences, 1)
-    self.eval()
+    self.model.eval()
     while idx.size(1) < max_new_tokens:
-      idx_cond = idx if idx.size(1) <= self.config.block_size else idx[:, -self.config.block_size:]
-      logits = self(idx_cond)
+      idx_cond = idx if idx.size(1)<=self.model.config.block_size else idx[:, -self.model.config.block_size:]
+      logits = self.model(idx_cond)
       logits = logits / temperature
       if top_k is not None:
-        assert top_k > 0 and top_k <= self.config.vocab_size
-        _, topk_indices = torch.topk(logits, self.config.vocab_size - top_k, largest=False)
+        assert top_k > 0 and top_k <= self.model.config.vocab_size
+        _, topk_indices = torch.topk(logits, self.model.config.vocab_size - top_k, largest=False)
         logits.scatter_(-1, topk_indices, -float('inf'))
       probs = F.softmax(logits, dim=-1)
       idx_next = torch.multinomial(probs[:, -1, :], num_samples=1)
       idx = torch.cat((idx, idx_next), dim=-1)
     return idx
-
-@dataclass
-class GPTConfig:
-  block_size: int = 1024
-  vocab_size: int = 50257
-  n_layer: int = 12
-  n_head: int = 12
-  n_embd: int = 768
-  norm_eps: float = 1e-5
 
 if __name__ == '__main__':
   seed = os.getenv("SEED", 420)
@@ -188,11 +190,10 @@ if __name__ == '__main__':
     device = 'mps'
   print(f'Using device: {device}')
 
-  config = GPTConfig()
-  model = GPT.from_pretrained('gpt2').to(device)
+  model = GPT2.from_pretrained('gpt2').to(device)
 
-  num_return_sequences = 5
-  max_length = 30
+  num_return_sequences = 8
+  max_length = 32
   context = "Hello, I'm a language model,"
   idx = model.encode(context, device)
 
