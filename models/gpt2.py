@@ -1,4 +1,4 @@
-# python3 models/gpt-2.py
+# python3 models/gpt2.py
 
 # from paper: Language Models are Unsupervised Multitask Learners
 # https://github.com/openai/gpt-2
