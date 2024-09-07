@@ -7,7 +7,7 @@
 
 from typing import Optional, Tuple, List
 from dataclasses import dataclass
-import os, math, warnings
+import os, math
 
 from sentencepiece import SentencePieceProcessor
 import torch
@@ -16,16 +16,14 @@ import torch.nn.functional as F
 
 @dataclass
 class LlamaConfig:
-  n_heads: int
+  n_heads: int = 32
   n_layers: int = 32
-  n_embd: int = 4096
-  hidden_dim: int = 11008
+  dim: int = 4096
   vocab_size: int = 32000
-  block_size: int = 2048
+  max_seq_len: int = 2048
   norm_eps: float = 1e-5
   multiple_of: int = 256
   max_batch_size: int = 32
-  # padding_idx: int = 0 # for nn.Embedding? see huggingface implementation
 
 # https://github.com/meta-llama/llama/blob/57b0eb62de0636e75af471e49e2f1862d908d9d8/llama/model.py#L47
 def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0):
@@ -39,7 +37,7 @@ def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0):
 def reshape_for_broadcast(freqs_cis: Tensor, x: Tensor):
     ndim = x.ndim
     assert 0 <= 1 < ndim
-    assert freqs_cis.shape == (x.shape[1], x.shape[-1])
+    assert freqs_cis.shape == (x.shape[1], x.shape[-1]), f'freqs_cis: {freqs_cis.shape}, x:{x.shape}'
     shape = [d if i == 1 or i == ndim - 1 else 1 for i, d in enumerate(x.shape)]
     return freqs_cis.view(*shape)
 
@@ -53,8 +51,8 @@ def apply_rotary_emb(xq: Tensor, xk: Tensor, freqs_cis: Tensor) -> Tuple[Tensor,
   return xq_out.type_as(xq), xk_out.type_as(xk)
 
 # https://github.com/meta-llama/llama/blob/57b0eb62de0636e75af471e49e2f1862d908d9d8/llama/model.py#L161
-def compute_hidden_dim(n_embd: int, multiple_of: int):
-  hidden_dim = 4 * n_embd
+def compute_hidden_dim(dim: int, multiple_of: int):
+  hidden_dim = 4 * dim
   hidden_dim = int(2 * hidden_dim / 3)
   hidden_dim = multiple_of * ((hidden_dim + multiple_of - 1) // multiple_of)
   return hidden_dim
@@ -62,24 +60,39 @@ def compute_hidden_dim(n_embd: int, multiple_of: int):
 class LlamaAttention(nn.Module):
   def __init__(self, config: LlamaConfig):
     super().__init__()
-    assert config.n_embd % config.n_heads == 0
-    self.n_heads, self.head_dim = config.n_heads, config.n_embd // config.n_heads
-    self.q_proj = nn.Linear(config.n_embd, config.n_embd, bias=False)
-    self.k_proj = nn.Linear(config.n_embd, config.n_embd, bias=False)
-    self.v_proj = nn.Linear(config.n_embd, config.n_embd, bias=False)
-    self.o_proj = nn.Linear(config.n_embd, config.n_embd, bias=False)
+    assert config.dim % config.n_heads == 0
+    self.n_heads, self.head_dim = config.n_heads, config.dim // config.n_heads
+    self.q_proj = nn.Linear(config.dim, config.dim, bias=False)
+    self.k_proj = nn.Linear(config.dim, config.dim, bias=False)
+    self.v_proj = nn.Linear(config.dim, config.dim, bias=False)
+    self.o_proj = nn.Linear(config.dim, config.dim, bias=False)
+
+    self.cache_k = torch.zeros((config.max_batch_size, config.max_seq_len, self.n_heads, self.head_dim))
+    self.cache_v = torch.zeros((config.max_batch_size, config.max_seq_len, self.n_heads, self.head_dim))
 
   def forward(self, x: Tensor, start_pos: int, freqs_cis: Tensor, mask: Optional[Tensor]=None):
     bsz, seqlen, _ = x.size()
     xq, xk, xv = self.q_proj(x), self.k_proj(x), self.v_proj(x)
-    xq = xq.view(bsz, seqlen, self.n_heads, self.head_dim).transpose(1, 2)
-    xk = xk.view(bsz, seqlen, self.n_heads, self.head_dim).transpose(1, 2)
-    xv = xv.view(bsz, seqlen, self.n_heads, self.head_dim).transpose(1, 2)
+    xq = xq.view(bsz, seqlen, self.n_heads, self.head_dim)
+    xk = xk.view(bsz, seqlen, self.n_heads, self.head_dim)
+    xv = xv.view(bsz, seqlen, self.n_heads, self.head_dim)
+
     xq, xk = apply_rotary_emb(xq, xk, freqs_cis)
-    scores = (xq @ xk.transpose(2, 3)) / math.sqrt(self.head_dim)
+
+    self.cache_k = self.cache_k.to(xq)
+    self.cache_v = self.cache_v.to(xq)
+    self.cache_k[:bsz, start_pos : start_pos + seqlen] = xk
+    self.cache_v[:bsz, start_pos : start_pos + seqlen] = xv
+
+    keys = self.cache_k[:bsz, : start_pos + seqlen]
+    values = self.cache_v[:bsz, : start_pos + seqlen]
+    xq, keys, values = xq.transpose(1, 2), keys.transpose(1, 2), values.transpose(1, 2)
+
+    scores = (xq @ keys.transpose(2, 3)) / math.sqrt(self.head_dim)
+    print(scores.shape)
     scores = F.softmax(scores.float(), dim=-1).type_as(xq)
-    output = torch.matmul(scores, xv)
-    if mask is not None: scores += mask
+    output = scores @ values
+    if mask is not None: scores = scores + mask
     output = output.transpose(1, 2).contiguous().view(bsz, seqlen, -1)
     output = self.o_proj(output)
     return output
@@ -87,11 +100,11 @@ class LlamaAttention(nn.Module):
 class LlamaFeedForward(nn.Module):
   def __init__(self, config: LlamaConfig):
     super().__init__()
-    hidden_dim = compute_hidden_dim(config.n_embd, config.multiple_of)
+    hidden_dim = compute_hidden_dim(config.dim, config.multiple_of)
     self.act_fn = nn.SiLU()
-    self.gate_proj = nn.Linear(config.n_embd, hidden_dim, bias=False)
-    self.up_proj = nn.Linear(config.n_embd, hidden_dim, bias=False)
-    self.down_proj = nn.Linear(hidden_dim, config.n_embd, bias=False)
+    self.gate_proj = nn.Linear(config.dim, hidden_dim, bias=False)
+    self.up_proj = nn.Linear(config.dim, hidden_dim, bias=False)
+    self.down_proj = nn.Linear(hidden_dim, config.dim, bias=False)
 
   def forward(self, x: Tensor):
     return self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
@@ -99,9 +112,9 @@ class LlamaFeedForward(nn.Module):
 class LlamaBlock(nn.Module):
   def __init__(self, config: LlamaConfig):
     super().__init__()
-    self.input_layernorm = nn.RMSNorm(config.n_embd, eps=config.norm_eps)
+    self.input_layernorm = nn.RMSNorm(config.dim, eps=config.norm_eps)
     self.self_attn = LlamaAttention(config)
-    self.post_attention_layernorm = nn.RMSNorm(config.n_embd, eps=config.norm_eps)
+    self.post_attention_layernorm = nn.RMSNorm(config.dim, eps=config.norm_eps)
     self.mlp = LlamaFeedForward(config)
 
   def forward(self, x: Tensor, start_pos: int, freqs_cis: Tensor, mask: Optional[Tensor]):
@@ -114,19 +127,19 @@ class LlamaTransformer(nn.Module):
     super().__init__()
     self.config = config
     self.model = nn.ModuleDict(dict(
-      embed_tokens = nn.Embedding(config.vocab_size, config.n_embd), #, padding_idx=config.padding_idx),
+      embed_tokens = nn.Embedding(config.vocab_size, config.dim),
       layers = nn.ModuleList([LlamaBlock(config) for _ in range(config.n_layers)]),
       norm = nn.RMSNorm(4096, eps=config.norm_eps),
     ))
-    self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
-    self.freqs_cis = precompute_freqs_cis(config.n_embd // config.n_heads, config.block_size * 2)
-    self.register_buffer('mask', torch.full((1, 1, config.block_size, config.block_size), float("-inf")))
+    self.lm_head = nn.Linear(config.dim, config.vocab_size, bias=False)
+    self.freqs_cis = precompute_freqs_cis(config.dim // config.n_heads, config.max_seq_len * 2)
+    self.register_buffer('mask', torch.full((1, 1, config.max_seq_len, config.max_seq_len), float('-inf')))
     print("number of parameters: %.2fB" % (self.get_num_params()/1e9,))
 
   @torch.inference_mode() # clamp to inference mode
   def forward(self, tokens: Tensor, start_pos: int):
     seqlen = tokens.size(1)
-    assert tokens.size(1) <= self.config.block_size
+    assert seqlen <= self.config.max_seq_len
     device = tokens.device
     h = self.model.embed_tokens(tokens)
     self.freqs_cis = self.freqs_cis.to(device)
@@ -134,9 +147,8 @@ class LlamaTransformer(nn.Module):
     mask = torch.triu(self.mask.to(device), diagonal=start_pos + 1).type_as(h) if seqlen > 1 else None
     for layer in self.model.layers: h = layer(h, start_pos, freqs_cis, mask)
     h = self.model.norm(h)
-    if not self.training: h = h[:, [-1], :]
-    h = self.lm_head(h)
-    return h
+    output = self.lm_head(h[:,-1,:])
+    return output
 
   def get_num_params(self, non_embedding=True):
     n_params = sum(p.numel() for p in self.parameters())
@@ -180,16 +192,15 @@ class Llama:
   def from_pretrained(model_type: str='7B'):
     assert model_type in ('7B', '13B', '30B', '65B'), f'invalid model_type: {model_type}'
     config_args = {
-      '7B' : dict(n_embd=4096, n_heads=32, n_layers=32, hidden_dim=11008), # 6.7B
-      '13B': dict(n_embd=5120, n_heads=40, n_layers=40, hidden_dim=11008), # 13.0B
-      '30B': dict(n_embd=6656, n_heads=52, n_layers=60, hidden_dim=11008), # 32.5B
-      '65B': dict(n_embd=8192, n_heads=64, n_layers=80, hidden_dim=11008), # 65.2B
+      '7B' : dict(dim=4096, n_heads=32, n_layers=32), # 6.7B
+      '13B': dict(dim=5120, n_heads=40, n_layers=40), # 13.0B
+      '30B': dict(dim=6656, n_heads=52, n_layers=60), # 32.5B
+      '65B': dict(dim=8192, n_heads=64, n_layers=80), # 65.2B
     }[model_type]
     config = LlamaConfig(**config_args)
     from transformers import LlamaTokenizer as Tokenizer, LlamaForCausalLM
     checkpoint = f'huggyllama/llama-{model_type.lower()}'
-    with warnings.catch_warnings(action="ignore"):
-      tokenizer = LlamaTokenizer(Tokenizer.from_pretrained(checkpoint).vocab_file)
+    tokenizer = LlamaTokenizer(Tokenizer.from_pretrained(checkpoint).vocab_file)
     model_hf = LlamaForCausalLM.from_pretrained(checkpoint)
     model = LlamaTransformer(config)
     sd, sd_hf = model.state_dict(), model_hf.state_dict()
@@ -208,7 +219,7 @@ class Llama:
     prompt_tokens = [self.tokenizer.encode(x, bos=True, eos=False) for x in prompts]
     min_prompt_size = min([len(t) for t in prompt_tokens])
     max_prompt_size = max([len(t) for t in prompt_tokens])
-    total_len = min(params.block_size, max_gen_len + max_prompt_size)
+    total_len = min(params.max_seq_len, max_gen_len + max_prompt_size)
     tokens = torch.full((bsz, total_len), self.tokenizer.pad_id).to(device).long()
     for k, t in enumerate(prompt_tokens): tokens[k, : len(t)] = torch.tensor(t).long()
     input_text_mask = tokens != self.tokenizer.pad_id
