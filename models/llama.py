@@ -8,6 +8,7 @@
 from typing import Optional, Tuple, List
 from dataclasses import dataclass
 import os, math
+from helpers import timeit
 
 from sentencepiece import SentencePieceProcessor
 import torch
@@ -33,7 +34,6 @@ def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0):
   freqs_cis = torch.polar(torch.ones_like(freqs), freqs)  # complex64
   return freqs_cis
 
-# https://github.com/meta-llama/llama/blob/57b0eb62de0636e75af471e49e2f1862d908d9d8/llama/model.py#L55
 def reshape_for_broadcast(freqs_cis: Tensor, x: Tensor):
     ndim = x.ndim
     assert 0 <= 1 < ndim
@@ -41,7 +41,6 @@ def reshape_for_broadcast(freqs_cis: Tensor, x: Tensor):
     shape = [d if i == 1 or i == ndim - 1 else 1 for i, d in enumerate(x.shape)]
     return freqs_cis.view(*shape)
 
-# https://github.com/meta-llama/llama/blob/57b0eb62de0636e75af471e49e2f1862d908d9d8/llama/model.py#L63
 def apply_rotary_emb(xq: Tensor, xk: Tensor, freqs_cis: Tensor) -> Tuple[Tensor, Tensor]:
   xq_ = torch.view_as_complex(xq.float().reshape(*xq.shape[:-1], -1, 2))
   xk_ = torch.view_as_complex(xk.float().reshape(*xk.shape[:-1], -1, 2))
@@ -89,7 +88,6 @@ class LlamaAttention(nn.Module):
     xq, keys, values = xq.transpose(1, 2), keys.transpose(1, 2), values.transpose(1, 2)
 
     scores = (xq @ keys.transpose(2, 3)) / math.sqrt(self.head_dim)
-    print(scores.shape)
     scores = F.softmax(scores.float(), dim=-1).type_as(xq)
     output = scores @ values
     if mask is not None: scores = scores + mask
@@ -101,13 +99,12 @@ class LlamaFeedForward(nn.Module):
   def __init__(self, config: LlamaConfig):
     super().__init__()
     hidden_dim = compute_hidden_dim(config.dim, config.multiple_of)
-    self.act_fn = nn.SiLU()
     self.gate_proj = nn.Linear(config.dim, hidden_dim, bias=False)
     self.up_proj = nn.Linear(config.dim, hidden_dim, bias=False)
     self.down_proj = nn.Linear(hidden_dim, config.dim, bias=False)
 
   def forward(self, x: Tensor):
-    return self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
+    return self.down_proj(F.silu(self.gate_proj(x)) * self.up_proj(x))
 
 class LlamaBlock(nn.Module):
   def __init__(self, config: LlamaConfig):
@@ -133,7 +130,7 @@ class LlamaTransformer(nn.Module):
     ))
     self.lm_head = nn.Linear(config.dim, config.vocab_size, bias=False)
     self.freqs_cis = precompute_freqs_cis(config.dim // config.n_heads, config.max_seq_len * 2)
-    self.register_buffer('mask', torch.full((1, 1, config.max_seq_len, config.max_seq_len), float('-inf')))
+    self.mask = torch.full((1, 1, config.max_seq_len, config.max_seq_len), float('-inf'))
     print("number of parameters: %.2fB" % (self.get_num_params()/1e9,))
 
   @torch.inference_mode() # clamp to inference mode
@@ -144,8 +141,10 @@ class LlamaTransformer(nn.Module):
     h = self.model.embed_tokens(tokens)
     self.freqs_cis = self.freqs_cis.to(device)
     freqs_cis = self.freqs_cis[start_pos : start_pos + seqlen]
-    mask = torch.triu(self.mask.to(device), diagonal=start_pos + 1).type_as(h) if seqlen > 1 else None
-    for layer in self.model.layers: h = layer(h, start_pos, freqs_cis, mask)
+    # TODO: this line breaks inference, figure out why!!
+    # mask = torch.triu(self.mask.to(device), diagonal=start_pos + 1).type_as(h) if seqlen > 1 else None
+    # for layer in self.model.layers: h = layer(h, start_pos, freqs_cis, mask)
+    for layer in self.model.layers: h = layer(h, start_pos, freqs_cis, None)
     h = self.model.norm(h)
     output = self.lm_head(h[:,-1,:])
     return output
@@ -189,7 +188,8 @@ class Llama:
     return self
 
   @staticmethod
-  def from_pretrained(model_type: str='7B'):
+  @timeit(desc="Load time", ms=False)
+  def from_pretrained(model_type: str='7B', half=False):
     assert model_type in ('7B', '13B', '30B', '65B'), f'invalid model_type: {model_type}'
     config_args = {
       '7B' : dict(dim=4096, n_heads=32, n_layers=32), # 6.7B
@@ -203,12 +203,15 @@ class Llama:
     tokenizer = LlamaTokenizer(Tokenizer.from_pretrained(checkpoint).vocab_file)
     model_hf = LlamaForCausalLM.from_pretrained(checkpoint)
     model = LlamaTransformer(config)
+    if half: model, model_hf = model.half(), model_hf.half()
     sd, sd_hf = model.state_dict(), model_hf.state_dict()
-    sd_keys = [key for key in sd if key!='mask']
-    assert len(sd_hf.keys()) == len(sd_keys), f"mismatched keys: {len(sd_hf.keys())} != {len(sd_keys)}"
-    for k in sd_hf:
+    sd_keys, sd_keys_hf = list(sd.keys()), list(sd_hf.keys())
+    assert len(sd_keys_hf) == len(sd_keys), f"mismatched keys: {len(sd_keys_hf)} != {len(sd_keys)}"
+    for k in sd_keys_hf:
       assert sd_hf[k].shape == sd[k].shape, f'{k} not found'
       with torch.no_grad(): sd[k].copy_(sd_hf[k])
+      print(f'loaded: {k}, {sd[k].shape}, {sd[k].dtype}')
+      del sd_hf[k] # free memory after copying
     return Llama(model, tokenizer)
 
   @torch.no_grad()
@@ -267,9 +270,10 @@ if __name__ == "__main__":
   elif torch.backends.mps.is_available():
     torch.mps.manual_seed(seed)
     device = 'mps'
+  device = 'cpu' # MPS OOMs, hardcode to cpu
   print(f'Using device: {device}')
 
-  model = Llama.from_pretrained('7B').to(device)
+  model = Llama.from_pretrained('7B', half=True).to(device)
 
   num_return_sequences = 4
   max_gen_len = 32
@@ -277,6 +281,7 @@ if __name__ == "__main__":
 
   prompts = [context]*num_return_sequences
   out = model.generate(prompts, max_gen_len, device=device)
+  print('-'*50)
   for i, sentence in enumerate(out):
     print(f'sample {i+1}:', sentence)
-    print()
+    print('-'*50)
