@@ -27,27 +27,28 @@ class LlamaConfig:
   max_batch_size: int = 32
 
 # https://github.com/meta-llama/llama/blob/57b0eb62de0636e75af471e49e2f1862d908d9d8/llama/model.py#L47
-def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0):
-  freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[: (dim // 2)].float() / dim))
-  t = torch.arange(end, device=freqs.device)  # type: ignore
-  freqs = torch.outer(t, freqs).float()  # type: ignore
-  freqs_cis = torch.polar(torch.ones_like(freqs), freqs)  # complex64
+def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0) -> Tensor:
+  assert dim % 2 == 0, f"dim must be even, {dim=}"
+  freqs = torch.pow(theta, torch.arange(0, dim, 2).neg().float() / dim) # 1/(theta ^ 2d) for each d < dim/2
+  freqs = torch.outer(torch.arange(end, device=freqs.device), freqs).float() # m/(theta ^ 2d) for each m < end, d < dim/2
+  freqs_cis = torch.polar(torch.ones_like(freqs), freqs)  # complex64, (end, dim/2)
   return freqs_cis
 
-def reshape_for_broadcast(freqs_cis: Tensor, x: Tensor):
-    ndim = x.ndim
-    assert 0 <= 1 < ndim
-    assert freqs_cis.shape == (x.shape[1], x.shape[-1]), f'freqs_cis: {freqs_cis.shape}, x:{x.shape}'
-    shape = [d if i == 1 or i == ndim - 1 else 1 for i, d in enumerate(x.shape)]
-    return freqs_cis.view(*shape)
-
+# note: x{q,k} is (bsz, seqlen, n_head, head_dim)
 def apply_rotary_emb(xq: Tensor, xk: Tensor, freqs_cis: Tensor) -> Tuple[Tensor, Tensor]:
-  xq_ = torch.view_as_complex(xq.float().reshape(*xq.shape[:-1], -1, 2))
-  xk_ = torch.view_as_complex(xk.float().reshape(*xk.shape[:-1], -1, 2))
-  freqs_cis = reshape_for_broadcast(freqs_cis, xq_)
-  xq_out = torch.view_as_real(xq_ * freqs_cis).flatten(3)
-  xk_out = torch.view_as_real(xk_ * freqs_cis).flatten(3)
+  xq_complex = torch.view_as_complex(torch.unflatten(xq.float(), -1, (-1, 2))) # (bsz, seqlen, n_head, head_dim/2)
+  xk_complex = torch.view_as_complex(torch.unflatten(xk.float(), -1, (-1, 2))) # (bsz, seqlen, n_head, head_dim/2)
+  freqs_cis = freqs_cis[:, None, :] # reshape_for_broadcast, (seqlen, 1, head_dim/2)
+  xq_out = torch.view_as_real(xq_complex * freqs_cis).reshape_as(xq) # (bsz, seqlen, n_head, head_dim)
+  xk_out = torch.view_as_real(xk_complex * freqs_cis).reshape_as(xk) # (bsz, seqlen, n_head, head_dim)
   return xq_out.type_as(xq), xk_out.type_as(xk)
+
+# n_rep > 1 aka n_kv_heads != n_heads implies MQA [arxiv/2307.09288, A.2.1]
+def repeat_kv(x: torch.Tensor, n_rep: int) -> Tensor:
+    if n_rep == 1: return x
+    bs, seqlen, n_kv_heads, head_dim = x.shape
+    x = x.unsqueeze(-2).expand(bs, seqlen, n_kv_heads, n_rep, head_dim)
+    return x.reshape(bs, seqlen, n_kv_heads * n_rep, head_dim)
 
 # https://github.com/meta-llama/llama/blob/57b0eb62de0636e75af471e49e2f1862d908d9d8/llama/model.py#L161
 def compute_hidden_dim(dim: int, multiple_of: int):
@@ -56,7 +57,21 @@ def compute_hidden_dim(dim: int, multiple_of: int):
   hidden_dim = multiple_of * ((hidden_dim + multiple_of - 1) // multiple_of)
   return hidden_dim
 
-class LlamaAttention(nn.Module):
+
+class RMSNorm(nn.Module):
+  def __init__(self, dim: int, eps: float=1e-6):
+    super().__init__()
+    self.eps = eps
+    self.weight = nn.Parameter(torch.ones(dim))
+
+  def _norm(self, x: Tensor):
+    return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
+
+  def forward(self, x: Tensor):
+    return self._norm(x.float()).type_as(x) * self.weight
+
+
+class Attention(nn.Module):
   def __init__(self, config: LlamaConfig):
     super().__init__()
     assert config.dim % config.n_heads == 0
@@ -95,7 +110,8 @@ class LlamaAttention(nn.Module):
     output = self.o_proj(output)
     return output
 
-class LlamaFeedForward(nn.Module):
+
+class FeedForward(nn.Module):
   def __init__(self, config: LlamaConfig):
     super().__init__()
     hidden_dim = compute_hidden_dim(config.dim, config.multiple_of)
@@ -106,27 +122,29 @@ class LlamaFeedForward(nn.Module):
   def forward(self, x: Tensor):
     return self.down_proj(F.silu(self.gate_proj(x)) * self.up_proj(x))
 
-class LlamaBlock(nn.Module):
+
+class Block(nn.Module):
   def __init__(self, config: LlamaConfig):
     super().__init__()
-    self.input_layernorm = nn.RMSNorm(config.dim, eps=config.norm_eps)
-    self.self_attn = LlamaAttention(config)
-    self.post_attention_layernorm = nn.RMSNorm(config.dim, eps=config.norm_eps)
-    self.mlp = LlamaFeedForward(config)
+    self.input_layernorm = RMSNorm(config.dim, eps=config.norm_eps)
+    self.self_attn = Attention(config)
+    self.post_attention_layernorm = RMSNorm(config.dim, eps=config.norm_eps)
+    self.mlp = FeedForward(config)
 
   def forward(self, x: Tensor, start_pos: int, freqs_cis: Tensor, mask: Optional[Tensor]):
     x = x + self.self_attn(self.input_layernorm(x), start_pos, freqs_cis, mask)
     x = x + self.mlp(self.post_attention_layernorm(x))
     return x
 
-class LlamaTransformer(nn.Module):
+
+class Transformer(nn.Module):
   def __init__(self, config: LlamaConfig):
     super().__init__()
     self.config = config
     self.model = nn.ModuleDict(dict(
       embed_tokens = nn.Embedding(config.vocab_size, config.dim),
-      layers = nn.ModuleList([LlamaBlock(config) for _ in range(config.n_layers)]),
-      norm = nn.RMSNorm(4096, eps=config.norm_eps),
+      layers = nn.ModuleList([Block(config) for _ in range(config.n_layers)]),
+      norm = RMSNorm(4096, eps=config.norm_eps),
     ))
     self.lm_head = nn.Linear(config.dim, config.vocab_size, bias=False)
     self.freqs_cis = precompute_freqs_cis(config.dim // config.n_heads, config.max_seq_len * 2)
@@ -154,13 +172,12 @@ class LlamaTransformer(nn.Module):
     if non_embedding: n_params -= self.model.embed_tokens.weight.numel()
     return n_params
 
-class LlamaTokenizer:
+
+class Tokenizer:
   def __init__(self, model_path: str):
-    # reload tokenizer
     assert os.path.isfile(model_path), model_path
     self.sp_model = SentencePieceProcessor(model_file=model_path)
     print(f"Reloaded SentencePiece model from {model_path}")
-    # BOS / EOS token IDs
     self.n_words: int = self.sp_model.vocab_size()
     self.bos_id: int = self.sp_model.bos_id()
     self.eos_id: int = self.sp_model.eos_id()
@@ -176,10 +193,11 @@ class LlamaTokenizer:
     return t
 
   def decode(self, t: List[int]) -> str:
-      return self.sp_model.decode(t)
+    return self.sp_model.decode(t)
+
 
 class Llama:
-  def __init__(self, model: LlamaTransformer, tokenizer: LlamaTokenizer):
+  def __init__(self, model: Transformer, tokenizer: Tokenizer):
     self.model = model
     self.tokenizer = tokenizer
 
@@ -198,11 +216,11 @@ class Llama:
       '65B': dict(dim=8192, n_heads=64, n_layers=80), # 65.2B
     }[model_type]
     config = LlamaConfig(**config_args)
-    from transformers import LlamaTokenizer as Tokenizer, LlamaForCausalLM
+    from transformers import LlamaTokenizer, LlamaForCausalLM
     checkpoint = f'huggyllama/llama-{model_type.lower()}'
-    tokenizer = LlamaTokenizer(Tokenizer.from_pretrained(checkpoint).vocab_file)
+    tokenizer = Tokenizer(LlamaTokenizer.from_pretrained(checkpoint).vocab_file)
     model_hf = LlamaForCausalLM.from_pretrained(checkpoint)
-    model = LlamaTransformer(config)
+    model = Transformer(config)
     if half: model, model_hf = model.half(), model_hf.half()
     sd, sd_hf = model.state_dict(), model_hf.state_dict()
     sd_keys, sd_keys_hf = list(sd.keys()), list(sd_hf.keys())

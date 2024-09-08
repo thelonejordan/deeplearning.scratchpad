@@ -9,7 +9,7 @@
 # https://ai.meta.com/blog/large-language-model-llama-meta-ai/
 # https://ai.meta.com/blog/5-steps-to-getting-started-with-llama-2/
 
-from typing import Optional, Tuple, List
+from typing import Optional
 from dataclasses import dataclass
 import os, math
 from tqdm import tqdm
@@ -18,7 +18,9 @@ from helpers import timeit
 import torch
 from torch import Tensor, nn
 from torch.nn import functional as F
-from sentencepiece import SentencePieceProcessor
+
+from llama import precompute_freqs_cis, apply_rotary_emb, repeat_kv
+from llama import RMSNorm, Tokenizer
 
 @dataclass
 class LlamaConfig:
@@ -33,48 +35,11 @@ class LlamaConfig:
   max_batch_size: int = 32
   max_seq_len: int = 2048
 
-
-def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0) -> Tensor:
-  assert dim % 2 == 0, f"dim must be even, {dim=}"
-  freqs = torch.pow(theta, torch.arange(0, dim, 2).neg().float() / dim) # 1/(theta ^ 2d) for each d < dim/2
-  freqs = torch.outer(torch.arange(end, device=freqs.device), freqs).float() # m/(theta ^ 2d) for each m < end, d < dim/2
-  freqs_cis = torch.polar(torch.ones_like(freqs), freqs)  # complex64, (end, dim/2)
-  return freqs_cis
-
-# note: x{q,k} is (bsz, seqlen, n_head, head_dim)
-def apply_rotary_emb(xq: Tensor, xk: Tensor, freqs_cis: Tensor) -> Tuple[Tensor, Tensor]:
-  xq_complex = torch.view_as_complex(torch.unflatten(xq.float(), -1, (-1, 2))) # (bsz, seqlen, n_head, head_dim/2)
-  xk_complex = torch.view_as_complex(torch.unflatten(xk.float(), -1, (-1, 2))) # (bsz, seqlen, n_head, head_dim/2)
-  freqs_cis = freqs_cis.unsqueeze(0).unsqueeze(2) # reshape_for_broadcast, (1, seqlen, 1, head_dim/2)
-  xq_out = torch.view_as_real(xq_complex * freqs_cis).reshape_as(xq) # (bsz, seqlen, n_head, head_dim)
-  xk_out = torch.view_as_real(xk_complex * freqs_cis).reshape_as(xk) # (bsz, seqlen, n_head, head_dim)
-  return xq_out.type_as(xq), xk_out.type_as(xk)
-
-# n_rep > 1 aka n_kv_heads != n_heads implies MQA [arxiv/2307.09288, A.2.1]
-def repeat_kv(x: torch.Tensor, n_rep: int) -> Tensor:
-    if n_rep == 1: return x
-    bs, seqlen, n_kv_heads, head_dim = x.shape
-    x = x.unsqueeze(-2).expand(bs, seqlen, n_kv_heads, n_rep, head_dim)
-    return x.reshape(bs, seqlen, n_kv_heads * n_rep, head_dim)
-
 def compute_hidden_dim(dim: int, multiple_of: int, ffn_dim_multiplier: Optional[float]=None):
   hidden_dim = int(2 * (4 * dim) / 3)
   if ffn_dim_multiplier is not None: hidden_dim = int(ffn_dim_multiplier * hidden_dim) # custom dim factor multiplier
   hidden_dim = multiple_of * ((hidden_dim + multiple_of - 1) // multiple_of)
   return hidden_dim
-
-
-class RMSNorm(nn.Module):
-  def __init__(self, dim: int, eps: float=1e-6):
-    super().__init__()
-    self.eps = eps
-    self.weight = nn.Parameter(torch.ones(dim))
-
-  def _norm(self, x: Tensor):
-    return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
-
-  def forward(self, x: Tensor):
-    return self._norm(x.float()).type_as(x) * self.weight
 
 
 class Attention(nn.Module):
@@ -176,29 +141,6 @@ class Transformer(nn.Module):
     n_params = sum(p.numel() for p in self.parameters())
     if non_embedding: n_params -= self.model.embed_tokens.weight.numel()
     return n_params
-
-
-class Tokenizer:
-  def __init__(self, model_path: str):
-    assert os.path.isfile(model_path), model_path
-    self.sp_model = SentencePieceProcessor(model_file=model_path)
-    print(f"Reloaded SentencePiece model from {model_path}")
-    self.n_words: int = self.sp_model.vocab_size()
-    self.bos_id: int = self.sp_model.bos_id()
-    self.eos_id: int = self.sp_model.eos_id()
-    self.pad_id: int = self.sp_model.pad_id()
-    print(f"#words: {self.n_words} - BOS ID: {self.bos_id} - EOS ID: {self.eos_id}")
-    assert self.sp_model.vocab_size() == self.sp_model.get_piece_size()
-
-  def encode(self, s: str, bos: bool, eos: bool) -> List[int]:
-    assert type(s) is str
-    t = self.sp_model.encode(s)
-    if bos: t = [self.bos_id] + t
-    if eos: t = t + [self.eos_id]
-    return t
-
-  def decode(self, t: List[int]) -> str:
-    return self.sp_model.decode(t)
 
 
 class Llama:
