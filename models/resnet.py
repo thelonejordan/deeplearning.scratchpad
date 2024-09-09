@@ -9,6 +9,7 @@
 import os
 import torch
 from torch import nn, Tensor
+from helpers import timeit
 
 class ResidualBlock(nn.Module):
   def __init__(self, filters: int, size: int=3, subsample: bool=False):
@@ -119,5 +120,10 @@ if __name__ == "__main__":
   N, C, H, W = 32, 3, 224, 224
   x = torch.randn(N, C, H, W).to(device)
   model = Resnet(layers=34).to(device)
-  y = model(x)
-  print(x.shape, y.shape)
+  @timeit('forward pass completed in')
+  @torch.inference_mode()
+  @torch.no_grad()
+  def run_inference(x): return model(x)
+  for _ in range(100):
+    y = run_inference(x)
+    print(x.shape, y.shape)
