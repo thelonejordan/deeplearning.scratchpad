@@ -47,7 +47,7 @@ class CausalSelfAttention(nn.Module):
     att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(self.head_size)) # (B, H, T, T)
     att = att.masked_fill(self.bias[:,:,:T,:T] < 0.5, -float('inf')) # causal mask
     y = F.softmax(att, dim=-1) @ v # (B, H, T, T) x (B, H, T, C') -> (B, H, T, C')
-    # y = F.scaled_dot_product_attention(q, k, v, is_causal=True) # flash attention
+    # y = F.scaled_dot_product_attention(q, k, v, att_mask=mask, is_causal=True) # flash attention
     y = y.transpose(1, 2).contiguous().view(B, T, C)
     y = self.c_proj(y)
     return y
@@ -156,18 +156,18 @@ class GPT2:
         with torch.no_grad(): sd[k].copy_(sd_hf[k])
     return GPT2(model.apply_weight_sharing(), tiktoken.get_encoding('gpt2'))
 
-  def _encode(self, input: List[str] | str):
+  def _encode_batch(self, input: List[str] | str):
     batch = [input] if isinstance(input, str) else input
     return torch.tensor(self.tokenizer.encode_batch(batch), dtype=torch.long, device=self.device)
 
-  def _decode(self, idx: Tensor):
+  def _decode_batch(self, idx: Tensor):
     return self.tokenizer.decode_batch(idx.tolist())
 
   @torch.no_grad()
   def generate(self, prompt: str, max_new_tokens: int, num_return_sequences: int=1,
                temperature: float=1.0, top_k: Optional[int]=None):
     config = self.model.config
-    idx = model._encode(prompt)
+    idx = model._encode_batch(prompt)
     assert idx.size(0) == 1 and num_return_sequences >= 1 and temperature > 0.0
     idx = idx.repeat(num_return_sequences, 1)
     self.model.eval()
@@ -181,11 +181,42 @@ class GPT2:
       probs = F.softmax(logits, dim=-1)
       idx_next = torch.multinomial(probs[:, -1, :], num_samples=1)
       idx = torch.cat((idx, idx_next), dim=-1)
-    return self._decode(idx)
+    return self._decode_batch(idx)
+
+  def completion(self, prompts: str | List[str], max_new_tokens: int,
+                 temperature: float=1.0, top_k: Optional[int]=None):
+    config, tokenizer = self.model.config, self.tokenizer
+    idxs, masks = [], []
+    start_pos = max_new_tokens
+    for i in range(len(prompts)):
+      idx = tokenizer.encode(prompts[i])
+      mask = [1 for _ in range(len(idx))]
+      start_pos = min(start_pos, len(idx))
+      if len(idx) < max_new_tokens:
+        rem = max_new_tokens - len(idx)
+        idx.extend([tokenizer.eot_token for _ in range(rem)])
+        mask.extend([0 for _ in range(rem)])
+      idxs.append(idx)
+      masks.append(mask)
+    idx = torch.tensor(idxs, dtype=torch.long, device=self.device)
+    mask = torch.tensor(masks, dtype=torch.long, device=self.device)
+    self.model.eval()
+    while start_pos < max_new_tokens:
+      idx_cond = idx[:,:start_pos] if start_pos<=config.block_size else idx[:, -config.block_size:]
+      logits = self.model(idx_cond) / temperature
+      if top_k is not None and top_k < config.vocab_size:
+        assert top_k > 0
+        _, topk_indices = torch.topk(logits, config.vocab_size - top_k, largest=False)
+        logits.scatter_(-1, topk_indices, -float('inf'))
+      probs = F.softmax(logits, dim=-1)
+      idx_next = torch.multinomial(probs[:, -1, :], num_samples=1)
+      idx[:,[start_pos]] = torch.where(mask[:, [start_pos]]>0.5, idx[:,[start_pos]], idx_next)
+      start_pos += 1
+    return self._decode_batch(idx)
 
 
 if __name__ == '__main__':
-  seed = os.getenv("SEED", 420)
+  seed = os.getenv("SEED", 42)
   device = 'cpu'
   torch.manual_seed(seed)
   if torch.cuda.is_available():
@@ -196,13 +227,27 @@ if __name__ == '__main__':
     device = 'mps'
   print(f'Using device: {device}')
 
-  model = GPT2.from_pretrained('gpt2', half=False).to(device)
+  model = GPT2.from_pretrained('gpt2').to(device)
 
+  print("Testing generation...")
   num_return_sequences = 8
   max_length = 32
   context = "Hello, I'm a language model,"
   out = model.generate(context, max_length, num_return_sequences, top_k=50)
   print('-'*50)
   for i, sentence in enumerate(out):
-    print(f'sample {i+1}:', sentence)
+    print(sentence.replace('<|endoftext|>', '\n\n<|endoftext|>\n\n'))
+    print('-'*50)
+
+  print("Testing completion...")
+  max_length = 200
+  context = [
+    "Hello, I'm a language model,",
+    "Quantum computing is",
+    "SpaceX and NASA have collaborated to make commercial"
+  ]
+  out = model.completion(context, max_length, top_k=50)
+  print('-'*50)
+  for i, sentence in enumerate(out):
+    print(sentence.replace('<|endoftext|>', '\n\n<|endoftext|>\n\n'))
     print('-'*50)
