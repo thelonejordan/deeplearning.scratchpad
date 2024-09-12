@@ -43,6 +43,7 @@ class LlamaConfig:
     self.head_dim = self.dim // self.n_heads
     assert self.hidden_dim is None
     self.hidden_dim = compute_hidden_dim(self.dim, self.multiple_of, self.ffn_dim_multiplier)
+    if self.n_kv_heads is None: self.n_kv_heads = self.n_heads
 
 # https://github.com/meta-llama/llama/blob/7565eb6fee2175b2d4fe2cfb45067a61b35d7f5e/llama/model.py#L331
 def compute_hidden_dim(dim: int, multiple_of: int, ffn_dim_multiplier: Optional[float]=None):
@@ -61,9 +62,8 @@ def repeat_kv(x: torch.Tensor, n_rep: int) -> Tensor:
 class Attention(nn.Module):
   def __init__(self, config: LlamaConfig):
     super().__init__()
-    self.n_heads = config.n_heads
-    self.n_kv_heads = config.n_heads if config.n_kv_heads is None else config.n_kv_heads
-    self.n_rep, self.head_dim = config.n_heads // self.n_kv_heads, config.head_dim
+    self.n_heads, self.n_kv_heads, self.head_dim = config.n_heads, config.n_kv_heads, config.head_dim
+    self.n_rep,  = config.n_heads // config.n_kv_heads
     self.q_proj = nn.Linear(config.dim, self.n_heads * self.head_dim, bias=False)
     self.k_proj = nn.Linear(config.dim, self.n_kv_heads * self.head_dim, bias=False)
     self.v_proj = nn.Linear(config.dim, self.n_kv_heads * self.head_dim, bias=False)
