@@ -29,11 +29,27 @@ class LlamaConfig:
   n_heads: int = 32
   n_kv_heads: Optional[int] = None
   vocab_size: int = 32000
+  max_seq_len: int = 2048
   multiple_of: int = 256
   ffn_dim_multiplier: Optional[int] = None
   norm_eps: float = 1e-5
   max_batch_size: int = 32
-  max_seq_len: int = 2048
+  # for post init
+  head_dim: Optional[int] = None
+  hidden_dim: Optional[int] = None
+
+  def __post_init__(self):
+    assert self.head_dim is None and self.dim % self.n_heads == 0
+    self.head_dim = self.dim // self.n_heads
+    assert self.hidden_dim is None
+    self.hidden_dim = compute_hidden_dim(self.dim, self.multiple_of, self.ffn_dim_multiplier)
+
+# https://github.com/meta-llama/llama/blob/7565eb6fee2175b2d4fe2cfb45067a61b35d7f5e/llama/model.py#L331
+def compute_hidden_dim(dim: int, multiple_of: int, ffn_dim_multiplier: Optional[float]=None):
+  hidden_dim = int(2 * (4 * dim) / 3)
+  if ffn_dim_multiplier is not None: hidden_dim = int(ffn_dim_multiplier * hidden_dim) # custom dim factor multiplier
+  hidden_dim = multiple_of * ((hidden_dim + multiple_of - 1) // multiple_of)
+  return hidden_dim
 
 # n_rep > 1 aka n_kv_heads != n_heads implies MQA [arxiv/2307.09288, A.2.1]
 def repeat_kv(x: torch.Tensor, n_rep: int) -> Tensor:
@@ -42,20 +58,12 @@ def repeat_kv(x: torch.Tensor, n_rep: int) -> Tensor:
     x = x.unsqueeze(-2).expand(bs, seqlen, n_kv_heads, n_rep, head_dim)
     return x.reshape(bs, seqlen, n_kv_heads * n_rep, head_dim)
 
-def compute_hidden_dim(dim: int, multiple_of: int, ffn_dim_multiplier: Optional[float]=None):
-  hidden_dim = int(2 * (4 * dim) / 3)
-  if ffn_dim_multiplier is not None: hidden_dim = int(ffn_dim_multiplier * hidden_dim) # custom dim factor multiplier
-  hidden_dim = multiple_of * ((hidden_dim + multiple_of - 1) // multiple_of)
-  return hidden_dim
-
-
 class Attention(nn.Module):
   def __init__(self, config: LlamaConfig):
     super().__init__()
     self.n_heads = config.n_heads
     self.n_kv_heads = config.n_heads if config.n_kv_heads is None else config.n_kv_heads
-    self.n_rep = config.n_heads // self.n_kv_heads
-    self.head_dim = config.dim // config.n_heads
+    self.n_rep, self.head_dim = config.n_heads // self.n_kv_heads, config.head_dim
     self.q_proj = nn.Linear(config.dim, self.n_heads * self.head_dim, bias=False)
     self.k_proj = nn.Linear(config.dim, self.n_kv_heads * self.head_dim, bias=False)
     self.v_proj = nn.Linear(config.dim, self.n_kv_heads * self.head_dim, bias=False)
@@ -97,8 +105,8 @@ class FeedForward(nn.Module):
   def __init__(self, config: LlamaConfig):
     super().__init__()
     hidden_dim = compute_hidden_dim(config.dim, config.multiple_of, config.ffn_dim_multiplier)
-    self.gate_proj = nn.Linear(config.dim, hidden_dim, bias=False)
-    self.up_proj = nn.Linear(config.dim, hidden_dim, bias=False)
+    self.gate_proj = nn.Linear(config.dim, config.hidden_dim, bias=False)
+    self.up_proj = nn.Linear(config.dim, config.hidden_dim, bias=False)
     self.down_proj = nn.Linear(hidden_dim, config.dim, bias=False)
 
   def forward(self, x: Tensor):
@@ -121,7 +129,6 @@ class TransformerBlock(nn.Module):
 class Transformer(nn.Module):
   def __init__(self, config: LlamaConfig):
     super().__init__()
-    assert config.dim % config.n_heads == 0, "n_heads must divide dim"
     self.config = config
     self.model = nn.ModuleDict(dict(
       embed_tokens = nn.Embedding(config.vocab_size, config.dim),
@@ -129,7 +136,7 @@ class Transformer(nn.Module):
       norm = RMSNorm(config.dim, eps=config.norm_eps)
     ))
     self.lm_head = nn.Linear(config.dim, config.vocab_size, bias=False)
-    self.freqs_cis = precompute_freqs_cis(config.dim // config.n_heads, config.max_seq_len * 2)
+    self.freqs_cis = precompute_freqs_cis(config.head_dim, config.max_seq_len * 2)
     print("number of parameters: %.2fB" % (self.get_num_params()/1e9,))
 
   @torch.inference_mode()
@@ -215,6 +222,7 @@ class Llama:
       tokens[k, : len(t)] = torch.tensor(t, dtype=torch.long, device=device)
     eos_reached = torch.tensor([False] * bsz, device=device)
     tokens_mask = tokens != pad_id # True if the token is a prompt token, False otherwise
+    self.model.eval()
     for cur_pos in tqdm(range(min_prompt_len, total_len), desc='Generating tokens'):
       with torch.no_grad():
         logits = self.model(tokens[:, prev_pos:cur_pos], prev_pos)

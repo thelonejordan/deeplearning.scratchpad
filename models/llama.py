@@ -26,6 +26,22 @@ class LlamaConfig:
   norm_eps: float = 1e-5
   multiple_of: int = 256
   max_batch_size: int = 32
+  # for post init
+  head_dim: Optional[int] = None
+  hidden_dim: Optional[int] = None
+
+  def __post_init__(self):
+    assert self.head_dim is None and self.dim % self.n_heads == 0
+    self.head_dim = self.dim // self.n_heads
+    assert self.hidden_dim is None
+    self.hidden_dim = compute_hidden_dim(self.dim, self.multiple_of)
+
+# https://github.com/meta-llama/llama/blob/57b0eb62de0636e75af471e49e2f1862d908d9d8/llama/model.py#L161
+def compute_hidden_dim(dim: int, multiple_of: int):
+  hidden_dim = 4 * dim
+  hidden_dim = int(2 * hidden_dim / 3)
+  hidden_dim = multiple_of * ((hidden_dim + multiple_of - 1) // multiple_of)
+  return hidden_dim
 
 # https://github.com/meta-llama/llama/blob/57b0eb62de0636e75af471e49e2f1862d908d9d8/llama/model.py#L47
 def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0) -> Tensor:
@@ -44,13 +60,6 @@ def apply_rotary_emb(xq: Tensor, xk: Tensor, freqs_cis: Tensor) -> Tuple[Tensor,
   xk_out = torch.view_as_real(xk_complex * freqs_cis).reshape_as(xk) # (bsz, seqlen, n_head, head_dim)
   return xq_out.type_as(xq), xk_out.type_as(xk)
 
-# https://github.com/meta-llama/llama/blob/57b0eb62de0636e75af471e49e2f1862d908d9d8/llama/model.py#L161
-def compute_hidden_dim(dim: int, multiple_of: int):
-  hidden_dim = 4 * dim
-  hidden_dim = int(2 * hidden_dim / 3)
-  hidden_dim = multiple_of * ((hidden_dim + multiple_of - 1) // multiple_of)
-  return hidden_dim
-
 
 class RMSNorm(nn.Module):
   def __init__(self, dim: int, eps: float=1e-6):
@@ -68,8 +77,7 @@ class RMSNorm(nn.Module):
 class Attention(nn.Module):
   def __init__(self, config: LlamaConfig):
     super().__init__()
-    assert config.dim % config.n_heads == 0
-    self.n_heads, self.head_dim = config.n_heads, config.dim // config.n_heads
+    self.n_heads, self.head_dim = config.n_heads, config.head_dim
     self.q_proj = nn.Linear(config.dim, config.dim, bias=False)
     self.k_proj = nn.Linear(config.dim, config.dim, bias=False)
     self.v_proj = nn.Linear(config.dim, config.dim, bias=False)
@@ -108,10 +116,9 @@ class Attention(nn.Module):
 class FeedForward(nn.Module):
   def __init__(self, config: LlamaConfig):
     super().__init__()
-    hidden_dim = compute_hidden_dim(config.dim, config.multiple_of)
-    self.gate_proj = nn.Linear(config.dim, hidden_dim, bias=False)
-    self.up_proj = nn.Linear(config.dim, hidden_dim, bias=False)
-    self.down_proj = nn.Linear(hidden_dim, config.dim, bias=False)
+    self.gate_proj = nn.Linear(config.dim, config.hidden_dim, bias=False)
+    self.up_proj = nn.Linear(config.dim, config.hidden_dim, bias=False)
+    self.down_proj = nn.Linear(config.hidden_dim, config.dim, bias=False)
 
   def forward(self, x: Tensor):
     return self.down_proj(F.silu(self.gate_proj(x)) * self.up_proj(x))
@@ -141,7 +148,7 @@ class Transformer(nn.Module):
       norm = RMSNorm(4096, eps=config.norm_eps),
     ))
     self.lm_head = nn.Linear(config.dim, config.vocab_size, bias=False)
-    self.freqs_cis = precompute_freqs_cis(config.dim // config.n_heads, config.max_seq_len * 2)
+    self.freqs_cis = precompute_freqs_cis(config.head_dim, config.max_seq_len * 2)
     print("number of parameters: %.2fB" % (self.get_num_params()/1e9,))
 
   @torch.inference_mode() # clamp to inference mode
@@ -240,6 +247,7 @@ class Llama:
     for k, t in enumerate(prompt_tokens): tokens[k, : len(t)] = torch.tensor(t).long()
     input_text_mask = tokens != self.tokenizer.pad_id
     prev_pos = 0
+    self.model.eval()
     for cur_pos in tqdm(range(min_prompt_size, total_len), desc='Generating tokens'):
       with torch.no_grad():
         logits = self.model(tokens[:, prev_pos:cur_pos], prev_pos)
