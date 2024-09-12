@@ -172,10 +172,12 @@ class Llama:
     sd, sd_hf = model.state_dict(), model_hf.state_dict()
     sd_keys, sd_keys_hf = list(sd.keys()), list(sd_hf.keys())
     assert len(sd_keys_hf) == len(sd_keys),f"mismatched keys: {len(sd_keys_hf)} != {len(sd_keys)}, {set(sd_keys).difference(set(sd_keys_hf))}"
-    for k in sd_keys_hf:
+    itr = tqdm(sd_keys_hf)
+    for k in itr:
+      itr.set_description(f'Loading {k}')
       assert sd_hf[k].shape == sd[k].shape, f'{k} not found'
       with torch.no_grad(): sd[k].copy_(sd_hf[k])
-      print(f'loaded: {k}, {sd[k].shape}, {sd[k].dtype}')
+      # print(f'loaded: {k}, {sd[k].shape}, {sd[k].dtype}')
       del sd_hf[k] # free memory after copying
     return Llama(model, tokenizer)
 
@@ -198,11 +200,10 @@ class Llama:
       # Populate the initial tokens with the prompt tokens
       tokens[k, : len(t)] = torch.tensor(t, dtype=torch.long, device=device)
     eos_reached = torch.tensor([False] * bsz, device=device)
-    prompt_tokens_mask = tokens != pad_id # True if the token is a prompt token, False otherwise
-    cur_iterator = tqdm(range(1, total_len), desc="Generating tokens")
-    for cur_pos in cur_iterator:
+    tokens_mask = tokens != pad_id # True if the token is a prompt token, False otherwise
+    for cur_pos in tqdm(range(1, total_len), desc="Generating tokens"):
       with torch.no_grad():
-        logits = self.model(tokens[:, cur_pos-1:cur_pos], cur_pos)
+        logits = self.model(tokens[:, [cur_pos-1]], cur_pos-1)
       if temperature > 0:
         probs = torch.softmax(logits[:, -1] / temperature, dim=-1)
         next_token = self._sample_top_p(probs, top_p)
@@ -211,10 +212,10 @@ class Llama:
         next_token = torch.argmax(logits[:, -1], dim=-1)
       next_token = next_token.reshape(-1)
       # Only replace token if it is a padding token
-      next_token = torch.where(prompt_tokens_mask[:, cur_pos], tokens[:, cur_pos], next_token)
+      next_token = torch.where(tokens_mask[:, cur_pos], tokens[:, cur_pos], next_token)
       tokens[:, cur_pos] = next_token
       # EOS is reached only if we found an EOS token for a padding position
-      eos_reached |= (~prompt_tokens_mask[:, cur_pos]) & (next_token == self.tokenizer.eos_id)
+      eos_reached |= (~tokens_mask[:, cur_pos]) & (next_token == self.tokenizer.eos_id)
       if all(eos_reached):
         break
     out_tokens = []
