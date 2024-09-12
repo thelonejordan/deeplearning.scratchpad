@@ -200,9 +200,11 @@ class GPT2:
       masks.append(mask)
     idx = torch.tensor(idxs, dtype=torch.long, device=self.device)
     mask = torch.tensor(masks, dtype=torch.long, device=self.device)
+    eos_reached = torch.tensor([False] * idx.size(0), device=device)
     self.model.eval()
-    while start_pos < max_new_tokens:
-      idx_cond = idx[:,:start_pos] if start_pos<=config.block_size else idx[:, -config.block_size:]
+    cur_pos = start_pos
+    while cur_pos < max_new_tokens:
+      idx_cond = idx[:,:cur_pos] if cur_pos<=config.block_size else idx[:, -config.block_size:]
       logits = self.model(idx_cond) / temperature
       if top_k is not None and top_k < config.vocab_size:
         assert top_k > 0
@@ -210,8 +212,8 @@ class GPT2:
         logits.scatter_(-1, topk_indices, -float('inf'))
       probs = F.softmax(logits, dim=-1)
       idx_next = torch.multinomial(probs[:, -1, :], num_samples=1)
-      idx[:,[start_pos]] = torch.where(mask[:, [start_pos]]>0.5, idx[:,[start_pos]], idx_next)
-      start_pos += 1
+      idx[:,[cur_pos]] = torch.where(mask[:, [cur_pos]]>0.5, idx[:,[cur_pos]], idx_next)
+      cur_pos += 1
     return self._decode_batch(idx)
 
 
@@ -236,7 +238,7 @@ if __name__ == '__main__':
   out = model.generate(context, max_length, num_return_sequences, top_k=50)
   print('-'*50)
   for i, sentence in enumerate(out):
-    print(sentence.replace('<|endoftext|>', '\n\n<|endoftext|>\n\n'))
+    print(sentence.split('<|endoftext|>')[0])
     print('-'*50)
 
   print("Testing completion...")
@@ -249,5 +251,5 @@ if __name__ == '__main__':
   out = model.completion(context, max_length, top_k=50)
   print('-'*50)
   for i, sentence in enumerate(out):
-    print(sentence.replace('<|endoftext|>', '\n\n<|endoftext|>\n\n'))
+    print(sentence.split('<|endoftext|>')[0])
     print('-'*50)
