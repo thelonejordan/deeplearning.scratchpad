@@ -8,6 +8,7 @@
 from typing import Optional, Tuple, List
 from dataclasses import dataclass
 import os, math
+from tqdm import tqdm
 from helpers import timeit
 
 from sentencepiece import SentencePieceProcessor
@@ -42,13 +43,6 @@ def apply_rotary_emb(xq: Tensor, xk: Tensor, freqs_cis: Tensor) -> Tuple[Tensor,
   xq_out = torch.view_as_real(xq_complex * freqs_cis).reshape_as(xq) # (bsz, seqlen, n_head, head_dim)
   xk_out = torch.view_as_real(xk_complex * freqs_cis).reshape_as(xk) # (bsz, seqlen, n_head, head_dim)
   return xq_out.type_as(xq), xk_out.type_as(xk)
-
-# n_rep > 1 aka n_kv_heads != n_heads implies MQA [arxiv/2307.09288, A.2.1]
-def repeat_kv(x: torch.Tensor, n_rep: int) -> Tensor:
-    if n_rep == 1: return x
-    bs, seqlen, n_kv_heads, head_dim = x.shape
-    x = x.unsqueeze(-2).expand(bs, seqlen, n_kv_heads, n_rep, head_dim)
-    return x.reshape(bs, seqlen, n_kv_heads * n_rep, head_dim)
 
 # https://github.com/meta-llama/llama/blob/57b0eb62de0636e75af471e49e2f1862d908d9d8/llama/model.py#L161
 def compute_hidden_dim(dim: int, multiple_of: int):
@@ -148,7 +142,6 @@ class Transformer(nn.Module):
     ))
     self.lm_head = nn.Linear(config.dim, config.vocab_size, bias=False)
     self.freqs_cis = precompute_freqs_cis(config.dim // config.n_heads, config.max_seq_len * 2)
-    self.mask = torch.full((1, 1, config.max_seq_len, config.max_seq_len), float('-inf'))
     print("number of parameters: %.2fB" % (self.get_num_params()/1e9,))
 
   @torch.inference_mode() # clamp to inference mode
@@ -159,10 +152,11 @@ class Transformer(nn.Module):
     h = self.model.embed_tokens(tokens)
     self.freqs_cis = self.freqs_cis.to(device)
     freqs_cis = self.freqs_cis[start_pos : start_pos + seqlen]
-    # TODO: this line breaks inference, figure out why!!
-    # mask = torch.triu(self.mask.to(device), diagonal=start_pos + 1).type_as(h) if seqlen > 1 else None
-    # for layer in self.model.layers: h = layer(h, start_pos, freqs_cis, mask)
-    for layer in self.model.layers: h = layer(h, start_pos, freqs_cis, None)
+    mask = None
+    if seqlen > 1:
+      mask = torch.full((1, 1, seqlen, seqlen), float('-inf'), device=device)
+      mask = torch.triu(mask, diagonal=start_pos + 1).type_as(h)
+    for layer in self.model.layers: h = layer(h, start_pos, freqs_cis, mask)
     h = self.model.norm(h)
     output = self.lm_head(h[:,-1,:])
     return output
@@ -225,29 +219,31 @@ class Llama:
     sd, sd_hf = model.state_dict(), model_hf.state_dict()
     sd_keys, sd_keys_hf = list(sd.keys()), list(sd_hf.keys())
     assert len(sd_keys_hf) == len(sd_keys), f"mismatched keys: {len(sd_keys_hf)} != {len(sd_keys)}"
-    for k in sd_keys_hf:
+    itr = tqdm(sd_keys_hf)
+    for k in itr:
+      itr.set_description(f'Loading {k}')
       assert sd_hf[k].shape == sd[k].shape, f'{k} not found'
       with torch.no_grad(): sd[k].copy_(sd_hf[k])
-      print(f'loaded: {k}, {sd[k].shape}, {sd[k].dtype}')
+      # print(f'loaded: {k}, {sd[k].shape}, {sd[k].dtype}')
       del sd_hf[k] # free memory after copying
     return Llama(model, tokenizer)
 
-  @torch.no_grad()
   def generate(self, prompts: List[str], max_gen_len: int, temperature: float=0.8, top_p: float=0.95, device='cpu') -> List[str]:
     bsz = len(prompts)
     params = self.model.config
     assert bsz <= params.max_batch_size, (bsz, params.max_batch_size)
     prompt_tokens = [self.tokenizer.encode(x, bos=True, eos=False) for x in prompts]
-    min_prompt_size = min([len(t) for t in prompt_tokens])
+    # min_prompt_size = min([len(t) for t in prompt_tokens])
     max_prompt_size = max([len(t) for t in prompt_tokens])
     total_len = min(params.max_seq_len, max_gen_len + max_prompt_size)
     tokens = torch.full((bsz, total_len), self.tokenizer.pad_id).to(device).long()
     for k, t in enumerate(prompt_tokens): tokens[k, : len(t)] = torch.tensor(t).long()
     input_text_mask = tokens != self.tokenizer.pad_id
-    start_pos = min_prompt_size
-    prev_pos = 0
-    for cur_pos in range(start_pos, total_len):
-      logits = self.model.forward(tokens[:, prev_pos:cur_pos], prev_pos)
+    # start_pos = min_prompt_size
+    # prev_pos = 0
+    for cur_pos in tqdm(range(1, total_len), desc='Generating tokens'):
+      with torch.no_grad():
+        logits = self.model(tokens[:, [cur_pos-1]], cur_pos-1)
       if temperature > 0:
         probs = torch.softmax(logits / temperature, dim=-1)
         next_token = sample_top_p(probs, top_p)
@@ -257,7 +253,7 @@ class Llama:
       # only replace token if prompt has already been generated
       next_token = torch.where(input_text_mask[:, cur_pos], tokens[:, cur_pos], next_token)
       tokens[:, cur_pos] = next_token
-      prev_pos = cur_pos
+      # prev_pos = cur_pos
     decoded = []
     for i, t in enumerate(tokens.tolist()):
       # cut to max gen len
@@ -278,6 +274,7 @@ def sample_top_p(probs, p):
   next_token = torch.gather(probs_idx, -1, next_token)
   return next_token
 
+
 if __name__ == "__main__":
   seed = os.getenv("SEED", 420)
   device = 'cpu'
@@ -291,15 +288,15 @@ if __name__ == "__main__":
   device = 'cpu' # MPS OOMs, hardcode to cpu
   print(f'Using device: {device}')
 
-  model = Llama.from_pretrained('7B', half=True).to(device)
+  model = Llama.from_pretrained('7B').to(device)
 
   num_return_sequences = 4
   max_gen_len = 32
   context = "Hello, I'm a language model,"
 
-  prompts = [context]*num_return_sequences
+  prompts = [context] * num_return_sequences
   out = model.generate(prompts, max_gen_len, device=device)
   print('-'*50)
   for i, sentence in enumerate(out):
-    print(f'sample {i+1}:', sentence)
+    print(sentence)
     print('-'*50)

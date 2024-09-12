@@ -19,7 +19,7 @@ import torch
 from torch import Tensor, nn
 from torch.nn import functional as F
 
-from llama import precompute_freqs_cis, apply_rotary_emb, repeat_kv
+from llama import precompute_freqs_cis, apply_rotary_emb, sample_top_p
 from llama import RMSNorm, Tokenizer
 
 @dataclass
@@ -34,6 +34,13 @@ class LlamaConfig:
   norm_eps: float = 1e-5
   max_batch_size: int = 32
   max_seq_len: int = 2048
+
+# n_rep > 1 aka n_kv_heads != n_heads implies MQA [arxiv/2307.09288, A.2.1]
+def repeat_kv(x: torch.Tensor, n_rep: int) -> Tensor:
+    if n_rep == 1: return x
+    bs, seqlen, n_kv_heads, head_dim = x.shape
+    x = x.unsqueeze(-2).expand(bs, seqlen, n_kv_heads, n_rep, head_dim)
+    return x.reshape(bs, seqlen, n_kv_heads * n_rep, head_dim)
 
 def compute_hidden_dim(dim: int, multiple_of: int, ffn_dim_multiplier: Optional[float]=None):
   hidden_dim = int(2 * (4 * dim) / 3)
@@ -201,12 +208,12 @@ class Llama:
       tokens[k, : len(t)] = torch.tensor(t, dtype=torch.long, device=device)
     eos_reached = torch.tensor([False] * bsz, device=device)
     tokens_mask = tokens != pad_id # True if the token is a prompt token, False otherwise
-    for cur_pos in tqdm(range(1, total_len), desc="Generating tokens"):
+    for cur_pos in tqdm(range(1, total_len), desc='Generating tokens'):
       with torch.no_grad():
         logits = self.model(tokens[:, [cur_pos-1]], cur_pos-1)
       if temperature > 0:
         probs = torch.softmax(logits[:, -1] / temperature, dim=-1)
-        next_token = self._sample_top_p(probs, top_p)
+        next_token = sample_top_p(probs, top_p)
       else:
         # Greedily select the token with the max probability
         next_token = torch.argmax(logits[:, -1], dim=-1)
@@ -229,21 +236,6 @@ class Llama:
       out_text.append(self.tokenizer.decode(current_prompt_tokens))
     return out_tokens, out_text
 
-  def _sample_top_p(self, probs, p):
-    probs_sort, probs_idx = torch.sort(probs, dim=-1, descending=True) # (B, vocab_size)
-    probs_sum = torch.cumsum(probs_sort, dim=-1) # (B, vocab_size)
-    # (Substracting "probs_sort" shifts the cumulative sum by 1 position to the right before masking)
-    mask = probs_sum - probs_sort > p # (B, vocab_size)
-    # Zero out all the probabilities of tokens that are not selected by the Top P
-    probs_sort[mask] = 0.0
-    # Redistribute the probabilities so that they sum up to 1.
-    probs_sort.div_(probs_sort.sum(dim=-1, keepdim=True))
-    # Sample a token (its index) from the top p distribution
-    next_token = torch.multinomial(probs_sort, num_samples=1)
-    # Get the token position in the vocabulary corresponding to the sampled index
-    next_token = torch.gather(probs_idx, -1, next_token)
-    return next_token
-
 
 if __name__ == "__main__":
   seed = os.getenv("SEED", 420)
@@ -258,10 +250,10 @@ if __name__ == "__main__":
   device = 'cpu' # hardcode, as MPS OOMs
   print(f'Using device: {device}')
 
-  model = Llama.from_pretrained('7B', half=True).to(device)
+  model = Llama.from_pretrained('7B').to(device)
 
   prompts = [
-    "Simply put, the theory of relativity states that ",
+    "Simply put, the theory of relativity states that",
     "If Google was an Italian company founded in Milan, it would",
   ]
 
