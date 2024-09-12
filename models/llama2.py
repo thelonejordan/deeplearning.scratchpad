@@ -64,7 +64,7 @@ class Attention(nn.Module):
     self.cache_k = torch.zeros(config.max_batch_size, config.max_seq_len, self.n_kv_heads, self.head_dim)
     self.cache_v = torch.zeros(config.max_batch_size, config.max_seq_len, self.n_kv_heads, self.head_dim)
 
-  def forward(self, x: Tensor, start_pos: int, freqs_cis: Tensor):
+  def forward(self, x: Tensor, start_pos: int, freqs_cis: Tensor, mask: Optional[Tensor]):
     bsz, seqlen, _ = x.shape
     xq, xk, xv = self.q_proj(x), self.k_proj(x), self.v_proj(x)
     xq = xq.view(bsz, seqlen, self.n_heads, self.head_dim)
@@ -85,6 +85,7 @@ class Attention(nn.Module):
     xq, keys, values = xq.transpose(1, 2), keys.transpose(1, 2), values.transpose(1, 2)
 
     scores = (xq @ keys.transpose(2, 3)) / math.sqrt(self.head_dim)
+    if mask is not None: scores = scores + mask
     scores = F.softmax(scores.float(), dim=-1).type_as(xq)
     output = scores @ values
     # if mask is not None: scores = scores + mask
@@ -113,8 +114,8 @@ class TransformerBlock(nn.Module):
     self.post_attention_layernorm = RMSNorm(config.dim, eps=config.norm_eps)
     self.mlp = FeedForward(config)
 
-  def forward(self, x: Tensor, start_pos: int, freqs_cis: Tensor):
-    h = x + self.self_attn(self.input_layernorm(x), start_pos, freqs_cis)
+  def forward(self, x: Tensor, start_pos: int, freqs_cis: Tensor, mask: Optional[Tensor]):
+    h = x + self.self_attn(self.input_layernorm(x), start_pos, freqs_cis, mask)
     out = h + self.mlp(self.post_attention_layernorm(h))
     return out
 
@@ -134,12 +135,17 @@ class Transformer(nn.Module):
 
   @torch.inference_mode()
   def forward(self, tokens: Tensor, start_pos: int):
-    _, seqlen = tokens.shape
-    assert seqlen == 1
+    seqlen = tokens.size(1)
+    assert seqlen <= self.config.max_seq_len
+    device = tokens.device
     h = self.model.embed_tokens(tokens)
-    self.freqs_cis = self.freqs_cis.to(tokens.device)
+    self.freqs_cis = self.freqs_cis.to(device)
     freqs_cis = self.freqs_cis[start_pos : start_pos + seqlen]
-    for layer in self.model.layers: h = layer(h, start_pos, freqs_cis)
+    mask = None
+    if seqlen > 1:
+      mask = torch.full((1, 1, seqlen, seqlen), float('-inf'), device=device)
+      mask = torch.triu(mask, diagonal=start_pos + 1).type_as(h)
+    for layer in self.model.layers: h = layer(h, start_pos, freqs_cis, mask)
     h = self.model.norm(h)
     output = self.lm_head(h).float()
     return output
@@ -196,6 +202,7 @@ class Llama:
     # Make sure the batch size is not too large
     bsz = len(prompt_tokens)
     assert bsz <= self.args.max_batch_size, f"batch size must be less than or equal to {self.args.max_batch_size}"
+    min_prompt_len = min(len(prompt) for prompt in prompt_tokens)
     max_prompt_len = max(len(prompt) for prompt in prompt_tokens)
     # Make sure the prompt length is not larger than the maximum sequence length
     assert max_prompt_len <= self.args.max_seq_len, f"prompt length must be less than or equal to {self.args.max_seq_len}"
@@ -203,20 +210,22 @@ class Llama:
     # Create the list that will contain the generated tokens, along with the initial prompt tokens
     pad_id = self.tokenizer.pad_id
     tokens = torch.full((bsz, total_len), pad_id, dtype=torch.long, device=device)
+    prev_pos = 0
     for k, t in enumerate(prompt_tokens):
       # Populate the initial tokens with the prompt tokens
       tokens[k, : len(t)] = torch.tensor(t, dtype=torch.long, device=device)
     eos_reached = torch.tensor([False] * bsz, device=device)
     tokens_mask = tokens != pad_id # True if the token is a prompt token, False otherwise
-    for cur_pos in tqdm(range(1, total_len), desc='Generating tokens'):
+    for cur_pos in tqdm(range(min_prompt_len, total_len), desc='Generating tokens'):
       with torch.no_grad():
-        logits = self.model(tokens[:, [cur_pos-1]], cur_pos-1)
+        logits = self.model(tokens[:, prev_pos:cur_pos], prev_pos)
       if temperature > 0:
         probs = torch.softmax(logits[:, -1] / temperature, dim=-1)
         next_token = sample_top_p(probs, top_p)
       else:
         # Greedily select the token with the max probability
         next_token = torch.argmax(logits[:, -1], dim=-1)
+      prev_pos = cur_pos
       next_token = next_token.reshape(-1)
       # Only replace token if it is a padding token
       next_token = torch.where(tokens_mask[:, cur_pos], tokens[:, cur_pos], next_token)
