@@ -97,9 +97,9 @@ class Attention(nn.Module):
     xq, keys, values = xq.transpose(1, 2), keys.transpose(1, 2), values.transpose(1, 2)
 
     scores = (xq @ keys.transpose(2, 3)) / math.sqrt(self.head_dim)
+    if mask is not None: scores = scores + mask
     scores = F.softmax(scores.float(), dim=-1).type_as(xq)
     output = scores @ values
-    if mask is not None: scores = scores + mask
     output = output.transpose(1, 2).contiguous().view(bsz, seqlen, -1)
     output = self.o_proj(output)
     return output
@@ -233,17 +233,16 @@ class Llama:
     params = self.model.config
     assert bsz <= params.max_batch_size, (bsz, params.max_batch_size)
     prompt_tokens = [self.tokenizer.encode(x, bos=True, eos=False) for x in prompts]
-    # min_prompt_size = min([len(t) for t in prompt_tokens])
+    min_prompt_size = min([len(t) for t in prompt_tokens])
     max_prompt_size = max([len(t) for t in prompt_tokens])
     total_len = min(params.max_seq_len, max_gen_len + max_prompt_size)
     tokens = torch.full((bsz, total_len), self.tokenizer.pad_id).to(device).long()
     for k, t in enumerate(prompt_tokens): tokens[k, : len(t)] = torch.tensor(t).long()
     input_text_mask = tokens != self.tokenizer.pad_id
-    # start_pos = min_prompt_size
-    # prev_pos = 0
-    for cur_pos in tqdm(range(1, total_len), desc='Generating tokens'):
+    prev_pos = 0
+    for cur_pos in tqdm(range(min_prompt_size, total_len), desc='Generating tokens'):
       with torch.no_grad():
-        logits = self.model(tokens[:, [cur_pos-1]], cur_pos-1)
+        logits = self.model(tokens[:, prev_pos:cur_pos], prev_pos)
       if temperature > 0:
         probs = torch.softmax(logits / temperature, dim=-1)
         next_token = sample_top_p(probs, top_p)
@@ -253,7 +252,7 @@ class Llama:
       # only replace token if prompt has already been generated
       next_token = torch.where(input_text_mask[:, cur_pos], tokens[:, cur_pos], next_token)
       tokens[:, cur_pos] = next_token
-      # prev_pos = cur_pos
+      prev_pos = cur_pos
     decoded = []
     for i, t in enumerate(tokens.tolist()):
       # cut to max gen len

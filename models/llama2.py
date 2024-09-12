@@ -88,7 +88,6 @@ class Attention(nn.Module):
     if mask is not None: scores = scores + mask
     scores = F.softmax(scores.float(), dim=-1).type_as(xq)
     output = scores @ values
-    # if mask is not None: scores = scores + mask
     output = output.transpose(1, 2).contiguous().view(bsz, seqlen, -1)
     output = self.o_proj(output)
     return output
