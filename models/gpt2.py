@@ -162,7 +162,7 @@ class GPT2:
   def _decode_batch(self, idx: Tensor):
     return self.tokenizer.decode_batch(idx.tolist())
 
-  @torch.no_grad()
+  @torch.inference_mode()
   def generate(self, prompt: str, max_new_tokens: int, num_return_sequences: int=1,
                temperature: float=1.0, top_k: Optional[int]=None):
     config = self.model.config
@@ -172,7 +172,8 @@ class GPT2:
     self.model.eval()
     while idx.size(1) < max_new_tokens:
       idx_cond = idx if idx.size(1)<=config.block_size else idx[:, -config.block_size:]
-      logits = self.model(idx_cond) / temperature
+      with torch.no_grad():
+        logits = self.model(idx_cond) / temperature
       if top_k is not None and top_k < config.vocab_size:
         assert top_k > 0
         _, topk_indices = torch.topk(logits, config.vocab_size - top_k, largest=False)
@@ -182,6 +183,7 @@ class GPT2:
       idx = torch.cat((idx, idx_next), dim=-1)
     return self._decode_batch(idx)
 
+  @torch.inference_mode()
   def completion(self, prompts: str | List[str], max_new_tokens: int,
                  temperature: float=1.0, top_k: Optional[int]=None):
     config, tokenizer = self.model.config, self.tokenizer
@@ -199,12 +201,12 @@ class GPT2:
       masks.append(mask)
     idx = torch.tensor(idxs, dtype=torch.long, device=self.device)
     mask = torch.tensor(masks, dtype=torch.long, device=self.device)
-    eos_reached = torch.tensor([False] * idx.size(0), device=device)
     self.model.eval()
     cur_pos = start_pos
     while cur_pos < max_new_tokens:
       idx_cond = idx[:,:cur_pos] if cur_pos<=config.block_size else idx[:, -config.block_size:]
-      logits = self.model(idx_cond) / temperature
+      with torch.no_grad():
+        logits = self.model(idx_cond) / temperature
       if top_k is not None and top_k < config.vocab_size:
         assert top_k > 0
         _, topk_indices = torch.topk(logits, config.vocab_size - top_k, largest=False)

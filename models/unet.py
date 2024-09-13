@@ -4,6 +4,7 @@
 # https://lmb.informatik.uni-freiburg.de/people/ronneber/u-net/
 # https://paperswithcode.com/method/u-net
 # https://paperswithcode.com/paper/u-net-convolutional-networks-for-biomedical
+# https://github.com/milesial/Pytorch-UNet
 
 import math
 from dataclasses import dataclass

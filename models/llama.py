@@ -151,7 +151,6 @@ class Transformer(nn.Module):
     self.freqs_cis = precompute_freqs_cis(config.head_dim, config.max_seq_len * 2)
     print("number of parameters: %.2fB" % (self.get_num_params()/1e9,))
 
-  @torch.inference_mode() # clamp to inference mode
   def forward(self, tokens: Tensor, start_pos: int):
     seqlen = tokens.size(1)
     assert seqlen <= self.config.max_seq_len
@@ -265,10 +264,8 @@ class Llama:
       prev_pos = cur_pos
     decoded = []
     for i, t in enumerate(tokens.tolist()):
-      # cut to max gen len
-      t = t[: len(prompt_tokens[i]) + max_gen_len]
-      # cut to eos tok if any
-      try: t = t[: t.index(self.tokenizer.eos_id)]
+      t = t[: len(prompt_tokens[i]) + max_gen_len] # cut to max gen len
+      try: t = t[: t.index(self.tokenizer.eos_id)] # cut to eos tok if any
       except ValueError: pass
       decoded.append(self.tokenizer.decode(t))
     return decoded
