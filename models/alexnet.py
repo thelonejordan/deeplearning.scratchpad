@@ -23,7 +23,6 @@
 # We did not pre-process the images in any other way, except for subtracting the mean activity over the training set
 # from each pixel. So we trained our network on the (centered) raw RGB values of the pixels.
 
-import os
 from dataclasses import dataclass
 from functools import partial
 
@@ -111,15 +110,9 @@ def train(X_train: Tensor, Y_train: Tensor, num_classes: int, config: TrainConfi
   return model
 
 if __name__ == "__main__":
-  seed = os.getenv("SEED", 42)
-  device = 'cpu'
-  torch.manual_seed(seed)
-  if torch.cuda.is_available():
-    torch.cuda.manual_seed(seed)
-    device = 'cuda'
-  elif torch.backends.mps.is_available():
-    torch.mps.manual_seed(seed)
-    device = 'mps'
+  from helpers import set_device, set_seed
+  device = set_device()
+  set_seed(device)
 
   num_classes = 1000
   N, C, H, W = 32, 3, 224, 224

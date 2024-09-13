@@ -201,8 +201,10 @@ class Llama:
   def __init__(self, model: Transformer, tokenizer: Tokenizer):
     self.model = model
     self.tokenizer = tokenizer
+    self.device = 'cpu'
 
   def to(self, device):
+    self.device = device
     self.model = self.model.to(device)
     return self
 
@@ -231,11 +233,11 @@ class Llama:
       itr.set_description(f'Loading {k}')
       assert sd_hf[k].shape == sd[k].shape, f'{k} not found'
       with torch.no_grad(): sd[k].copy_(sd_hf[k])
-      # print(f'loaded: {k}, {sd[k].shape}, {sd[k].dtype}')
       del sd_hf[k] # free memory after copying
     return Llama(model, tokenizer)
 
-  def generate(self, prompts: List[str], max_gen_len: int, temperature: float=0.8, top_p: float=0.95, device='cpu') -> List[str]:
+  @torch.inference_mode()
+  def generate(self, prompts: List[str], max_gen_len: int, temperature: float=0.8, top_p: float=0.95) -> List[str]:
     bsz = len(prompts)
     params = self.model.config
     assert bsz <= params.max_batch_size, (bsz, params.max_batch_size)
@@ -243,8 +245,8 @@ class Llama:
     min_prompt_size = min([len(t) for t in prompt_tokens])
     max_prompt_size = max([len(t) for t in prompt_tokens])
     total_len = min(params.max_seq_len, max_gen_len + max_prompt_size)
-    tokens = torch.full((bsz, total_len), self.tokenizer.pad_id).to(device).long()
-    for k, t in enumerate(prompt_tokens): tokens[k, : len(t)] = torch.tensor(t).long()
+    tokens = torch.full((bsz, total_len), self.tokenizer.pad_id, device=self.device).long()
+    for k, t in enumerate(prompt_tokens): tokens[k, : len(t)] = torch.tensor(t, device=self.device).long()
     input_text_mask = tokens != self.tokenizer.pad_id
     prev_pos = 0
     self.model.eval()
@@ -283,17 +285,9 @@ def sample_top_p(probs, p):
 
 
 if __name__ == "__main__":
-  seed = os.getenv("SEED", 420)
-  device = 'cpu'
-  torch.manual_seed(seed)
-  if torch.cuda.is_available():
-    torch.cuda.manual_seed(seed)
-    device = 'cuda'
-  elif torch.backends.mps.is_available():
-    torch.mps.manual_seed(seed)
-    device = 'mps'
-  device = 'cpu' # MPS OOMs, hardcode to cpu
-  print(f'Using device: {device}')
+  from helpers import set_device, set_seed
+  device = set_device('cpu') # hardcode, as MPS OOMs
+  set_seed(device)
 
   model = Llama.from_pretrained('7B').to(device)
 
@@ -302,7 +296,7 @@ if __name__ == "__main__":
   context = "Hello, I'm a language model,"
 
   prompts = [context] * num_return_sequences
-  out = model.generate(prompts, max_gen_len, device=device)
+  out = model.generate(prompts, max_gen_len)
   print('-'*50)
   for i, sentence in enumerate(out):
     print(sentence)

@@ -6,7 +6,6 @@
 # https://github.com/huggingface/pytorch-image-models/blob/main/timm/models/resnet.py
 # https://github.com/huggingface/pytorch-image-models/blob/main/timm/models/resnetv2.py
 
-import os
 import torch
 from torch import nn, Tensor
 from helpers import timeit
@@ -106,16 +105,9 @@ class Resnet(nn.Module):
     return nn.Sequential(*modules)
 
 if __name__ == "__main__":
-  seed = os.getenv("SEED", 420)
-  device = 'cpu'
-  torch.manual_seed(seed)
-  if torch.cuda.is_available():
-    torch.cuda.manual_seed(seed)
-    device = 'cuda'
-  elif torch.backends.mps.is_available():
-    torch.mps.manual_seed(seed)
-    device = 'mps'
-  print(f'Using device: {device}')
+  from helpers import set_device, set_seed
+  device = set_device()
+  set_seed(device)
 
   N, C, H, W = 32, 3, 224, 224
   x = torch.randn(N, C, H, W).to(device)

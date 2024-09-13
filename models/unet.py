@@ -5,7 +5,7 @@
 # https://paperswithcode.com/method/u-net
 # https://paperswithcode.com/paper/u-net-convolutional-networks-for-biomedical
 
-import os, math
+import math
 from dataclasses import dataclass
 
 import torch
@@ -103,15 +103,9 @@ def train(X_train: Tensor, Y_train: Tensor, config: TrainConfig=None):
   raise NotImplementedError()
 
 if __name__ == "__main__":
-  seed = os.getenv("SEED", 42)
-  device = 'cpu'
-  torch.manual_seed(seed)
-  if torch.cuda.is_available():
-    torch.cuda.manual_seed(seed)
-    device = 'cuda'
-  elif torch.backends.mps.is_available():
-    torch.mps.manual_seed(seed)
-    device = 'mps'
+  from helpers import set_device, set_seed
+  device = set_device()
+  set_seed(device)
 
   N, C, H, W = 2, 3, 572, 572
   sample_input = torch.randn(N, C, H, W)

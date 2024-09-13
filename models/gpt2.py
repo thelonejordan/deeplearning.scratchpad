@@ -35,6 +35,7 @@ class CausalSelfAttention(nn.Module):
     self.n_head, self.n_embd, self.head_size = config.n_head, config.n_embd, config.n_embd // config.n_head
     self.c_attn = Linear(config.n_embd, 3 * config.n_embd)
     self.c_proj = Linear(config.n_embd, config.n_embd)
+    # need to register as buffer so that to(device) works (consequently shows up in state_dict)
     self.register_buffer('bias', torch.tril(torch.ones(1, 1, config.block_size, config.block_size)))
 
   def forward(self, x: Tensor):
@@ -93,9 +94,7 @@ class Transformer(nn.Module):
     print("number of parameters: %.2fM" % (self.get_num_params()/1e6,))
 
   def forward(self, idx: Tensor):
-    device = idx.device
-    _, T = idx.size()
-    pos = torch.arange(0, T, dtype=torch.long, device=device)
+    pos = torch.arange(0, idx.size(1), dtype=torch.long, device=idx.device)
     tok_emb = self.transformer.wte(idx) # (B, T, C)
     pos_emb = self.transformer.wpe(pos) # (B, T, C)
     x = tok_emb + pos_emb # (B, T, C)
@@ -218,16 +217,9 @@ class GPT2:
 
 
 if __name__ == '__main__':
-  seed = os.getenv("SEED", 42)
-  device = 'cpu'
-  torch.manual_seed(seed)
-  if torch.cuda.is_available():
-    torch.cuda.manual_seed(seed)
-    device = 'cuda'
-  elif torch.backends.mps.is_available():
-    torch.mps.manual_seed(seed)
-    device = 'mps'
-  print(f'Using device: {device}')
+  from helpers import set_device, set_seed
+  device = set_device()
+  set_seed(device)
 
   model = GPT2.from_pretrained('gpt2').to(device)
 

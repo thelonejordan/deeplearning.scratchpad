@@ -167,8 +167,10 @@ class Llama:
     self.model = model
     self.tokenizer = tokenizer
     self.args = self.model.config
+    self.device = 'cpu'
 
   def to(self, device):
+    self.device = device
     self.model = self.model.to(device)
     return self
 
@@ -196,31 +198,25 @@ class Llama:
       itr.set_description(f'Loading {k}')
       assert sd_hf[k].shape == sd[k].shape, f'{k} not found'
       with torch.no_grad(): sd[k].copy_(sd_hf[k])
-      # print(f'loaded: {k}, {sd[k].shape}, {sd[k].dtype}')
       del sd_hf[k] # free memory after copying
     return Llama(model, tokenizer)
 
-  def text_completion(self, prompts: list[str], temperature: float = 0.6, top_p: float = 0.9, max_gen_len: Optional[int] = None, device='cpu'):
+  def text_completion(self, prompts: list[str], temperature: float = 0.6, top_p: float = 0.9, max_gen_len: Optional[int] = None):
     if max_gen_len is None:
       max_gen_len = self.args.max_seq_len - 1
-    # Convert each prompt into tokens
     prompt_tokens = [self.tokenizer.encode(prompt, bos=True, eos=False) for prompt in prompts]
-    # Make sure the batch size is not too large
     bsz = len(prompt_tokens)
     assert bsz <= self.args.max_batch_size, f"batch size must be less than or equal to {self.args.max_batch_size}"
     min_prompt_len = min(len(prompt) for prompt in prompt_tokens)
     max_prompt_len = max(len(prompt) for prompt in prompt_tokens)
-    # Make sure the prompt length is not larger than the maximum sequence length
     assert max_prompt_len <= self.args.max_seq_len, f"prompt length must be less than or equal to {self.args.max_seq_len}"
     total_len = min(self.args.max_seq_len, max_gen_len + max_prompt_len)
-    # Create the list that will contain the generated tokens, along with the initial prompt tokens
     pad_id = self.tokenizer.pad_id
-    tokens = torch.full((bsz, total_len), pad_id, dtype=torch.long, device=device)
+    tokens = torch.full((bsz, total_len), pad_id, dtype=torch.long, device=self.device)
     prev_pos = 0
     for k, t in enumerate(prompt_tokens):
-      # Populate the initial tokens with the prompt tokens
-      tokens[k, : len(t)] = torch.tensor(t, dtype=torch.long, device=device)
-    eos_reached = torch.tensor([False] * bsz, device=device)
+      tokens[k, : len(t)] = torch.tensor(t, dtype=torch.long, device=self.device)
+    eos_reached = torch.tensor([False] * bsz, device=self.device)
     tokens_mask = tokens != pad_id # True if the token is a prompt token, False otherwise
     self.model.eval()
     for cur_pos in tqdm(range(min_prompt_len, total_len), desc='Generating tokens'):
@@ -230,8 +226,7 @@ class Llama:
         probs = torch.softmax(logits[:, -1] / temperature, dim=-1)
         next_token = sample_top_p(probs, top_p)
       else:
-        # Greedily select the token with the max probability
-        next_token = torch.argmax(logits[:, -1], dim=-1)
+        next_token = torch.argmax(logits[:, -1], dim=-1) # greedy
       prev_pos = cur_pos
       next_token = next_token.reshape(-1)
       # Only replace token if it is a padding token
@@ -239,10 +234,8 @@ class Llama:
       tokens[:, cur_pos] = next_token
       # EOS is reached only if we found an EOS token for a padding position
       eos_reached |= (~tokens_mask[:, cur_pos]) & (next_token == self.tokenizer.eos_id)
-      if all(eos_reached):
-        break
-    out_tokens = []
-    out_text = []
+      if all(eos_reached): break
+    out_tokens, out_text = [], []
     for current_prompt_tokens in tokens.tolist():
       # Cut to the EOS token, if present
       if self.tokenizer.eos_id in current_prompt_tokens:
@@ -254,17 +247,9 @@ class Llama:
 
 
 if __name__ == "__main__":
-  seed = os.getenv("SEED", 420)
-  device = 'cpu'
-  torch.manual_seed(seed)
-  if torch.cuda.is_available():
-    torch.cuda.manual_seed(seed)
-    device = 'cuda'
-  elif torch.backends.mps.is_available():
-    torch.mps.manual_seed(seed)
-    device = 'mps'
-  device = 'cpu' # hardcode, as MPS OOMs
-  print(f'Using device: {device}')
+  from helpers import set_device, set_seed
+  device = set_device('cpu') # hardcode, as MPS OOMs
+  set_seed(device)
 
   model = Llama.from_pretrained('7B').to(device)
 
@@ -273,7 +258,7 @@ if __name__ == "__main__":
     "If Google was an Italian company founded in Milan, it would",
   ]
 
-  out_tokens, out_texts = model.text_completion(prompts, max_gen_len=64, device=device)
+  out_tokens, out_texts = model.text_completion(prompts, max_gen_len=64)
   assert len(out_texts) == len(prompts)
   print('-' * 50)
   for i in range(len(out_texts)):
