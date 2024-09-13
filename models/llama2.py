@@ -63,7 +63,7 @@ class Attention(nn.Module):
   def __init__(self, config: LlamaConfig):
     super().__init__()
     self.n_heads, self.n_kv_heads, self.head_dim = config.n_heads, config.n_kv_heads, config.head_dim
-    self.n_rep,  = config.n_heads // config.n_kv_heads
+    self.n_rep  = config.n_heads // config.n_kv_heads
     self.q_proj = nn.Linear(config.dim, self.n_heads * self.head_dim, bias=False)
     self.k_proj = nn.Linear(config.dim, self.n_kv_heads * self.head_dim, bias=False)
     self.v_proj = nn.Linear(config.dim, self.n_kv_heads * self.head_dim, bias=False)
