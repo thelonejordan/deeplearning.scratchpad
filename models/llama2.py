@@ -56,7 +56,7 @@ def compute_hidden_dim(dim: int, multiple_of: int, ffn_dim_multiplier: Optional[
 def repeat_kv(x: torch.Tensor, n_rep: int) -> Tensor:
     if n_rep == 1: return x
     bs, seqlen, n_kv_heads, head_dim = x.shape
-    x = x.unsqueeze(-2).expand(bs, seqlen, n_kv_heads, n_rep, head_dim)
+    x = x.unsqueeze(-2).expand(-1, -1, -1, n_rep, -1)
     return x.reshape(bs, seqlen, n_kv_heads * n_rep, head_dim)
 
 class Attention(nn.Module):
