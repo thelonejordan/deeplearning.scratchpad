@@ -133,27 +133,13 @@ class ResNet:
 
   @staticmethod
   def from_pretrained(num):
-    if num == 18:
-      from torchvision.models import resnet18, ResNet18_Weights
-      weights = ResNet18_Weights.DEFAULT
-      model = resnet18(weights=weights)
-    elif num == 34:
-      from torchvision.models import resnet34, ResNet34_Weights
-      weights = ResNet34_Weights.DEFAULT
-      model = resnet34(weights=weights)
-    elif num == 50:
-      from torchvision.models import resnet50, ResNet50_Weights
-      weights = ResNet50_Weights.DEFAULT
-      model = resnet50(weights=weights)
-    elif num == 101:
-      from torchvision.models import resnet101, ResNet101_Weights
-      weights = ResNet101_Weights.DEFAULT
-      model = resnet101(weights=weights)
-    elif num == 152:
-      from torchvision.models import resnet152, ResNet152_Weights
-      weights = ResNet152_Weights.DEFAULT
-      model = resnet152(weights=weights)
-    net = ResNet_(num)
+    import importlib
+    assert num in (18, 34, 50, 101, 152)
+    tv = importlib.import_module("torchvision.models")
+    weights = tv.__dict__[f"ResNet{num}_Weights"].DEFAULT
+    resnet = tv.__dict__[f"resnet{num}"]
+    model = resnet(weights=weights)
+    net = ResNet_(num, stride_in_1x1=True)
     net.load_state_dict(model.state_dict(), strict=True, assign=True)
     preprocess, categories = weights.transforms(), weights.meta["categories"]
     return ResNet(net, preprocess, categories)
