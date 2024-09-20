@@ -145,7 +145,7 @@ class Transformer(nn.Module):
     self.model = nn.ModuleDict(dict(
       embed_tokens = nn.Embedding(config.vocab_size, config.dim),
       layers = nn.ModuleList([Block(config) for _ in range(config.n_layers)]),
-      norm = RMSNorm(4096, eps=config.norm_eps),
+      norm = RMSNorm(config.dim, eps=config.norm_eps),
     ))
     self.lm_head = nn.Linear(config.dim, config.vocab_size, bias=False)
     self.freqs_cis = precompute_freqs_cis(config.head_dim, config.max_seq_len * 2)
