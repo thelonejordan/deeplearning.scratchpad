@@ -146,9 +146,9 @@ class ResNet:
       weights = ResNet50_Weights.DEFAULT
       model = resnet50(weights=weights)
     elif num == 101:
-      from torchvision.models import resnet152, ResNet152_Weights
-      weights = ResNet152_Weights.DEFAULT
-      model = resnet152(weights=weights)
+      from torchvision.models import resnet101, ResNet101_Weights
+      weights = ResNet101_Weights.DEFAULT
+      model = resnet101(weights=weights)
     elif num == 152:
       from torchvision.models import resnet152, ResNet152_Weights
       weights = ResNet152_Weights.DEFAULT
@@ -161,9 +161,9 @@ class ResNet:
 
 if __name__ == "__main__":
   from torchvision.io import read_image
-  model = ResNet.from_pretrained(34)
+  model = ResNet.from_pretrained(152)
   img = read_image("downloads/images/HopperGrace300px.jpg")
-  # model.net.eval()
+  model.net.eval()
   batch = model.preprocess(img).unsqueeze(0)
   prediction = model.net(batch).squeeze(0).softmax(0)
   class_id = prediction.argmax().item()
