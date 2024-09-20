@@ -8,9 +8,6 @@
 # https://github.com/huggingface/pytorch-image-models/blob/main/timm/models/resnetv2.py
 # https://x.com/awnihannun/status/1832511021602500796
 
-from typing import Optional, List
-from dataclasses import dataclass
-
 import torch
 from torch import Tensor, nn
 from torch.nn import functional as F
@@ -74,7 +71,7 @@ class ResNet_(nn.Module):
   def __init__(self, num, num_classes=1000, groups=1, width_per_group=64, stride_in_1x1=False):
     super().__init__()
     self.num = num
-    self.block = {
+    self.block: BasicBlock | Bottleneck = {
       18: BasicBlock,
       34: BasicBlock,
       50: Bottleneck,
@@ -101,9 +98,8 @@ class ResNet_(nn.Module):
     self.layer3 = self._make_layer(self.block, 256, self.num_blocks[2], stride=2, stride_in_1x1=stride_in_1x1)
     self.layer4 = self._make_layer(self.block, 512, self.num_blocks[3], stride=2, stride_in_1x1=stride_in_1x1)
     self.fc = nn.Linear(512 * self.block.expansion, num_classes)
-    self.pad = nn.ZeroPad2d([1,1,1,1])
 
-  def _make_layer(self, block, planes, num_blocks, stride, stride_in_1x1):
+  def _make_layer(self, block: BasicBlock | Bottleneck, planes: int, num_blocks: int, stride: int, stride_in_1x1: bool):
     strides = [stride] + [1] * (num_blocks-1)
     layers = []
     for stride in strides:
@@ -116,7 +112,7 @@ class ResNet_(nn.Module):
 
   def forward(self, x:Tensor) -> Tensor:
     out = F.relu(self.bn1(self.conv1(x)))
-    out = F.max_pool2d(self.pad(out), 3, 2)
+    out = F.max_pool2d(F.pad(out, [1,1,1,1]), 3, 2)
     out = self.layer1(out)
     out = self.layer2(out)
     out = self.layer3(out)
