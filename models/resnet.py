@@ -1,6 +1,7 @@
 # python3 models/resnet.py
 
 # https://pytorch.org/vision/stable/models/resnet.html
+# https://github.com/pytorch/vision/blob/main/torchvision/models/resnet.py
 # https://arxiv.org/abs/1512.03385
 # https://catalog.ngc.nvidia.com/orgs/nvidia/resources/resnet_50_v1_5_for_pytorch
 # https://d2l.ai/chapter_convolutional-modern/resnet.html
@@ -9,11 +10,14 @@
 # https://github.com/huggingface/pytorch-image-models/blob/main/timm/models/resnetv2.py
 # https://x.com/awnihannun/status/1832511021602500796
 
-from typing import Union, Type, List
+from typing import Union, Type, Tuple
+from dataclasses import dataclass
+from helpers import timeit
 
 import torch
 from torch import Tensor, nn
 from torch.nn import functional as F
+
 
 def conv3x3(in_planes: int, out_planes: int, stride: int=1, groups: int=1) -> nn.Conv2d:
   """3x3 convolution with padding"""
@@ -82,28 +86,40 @@ class Bottleneck(nn.Module):
     return out
 
 
-class ResNet_(nn.Module):
-  def __init__(self, num: int, num_classes: int=1000, groups: int=1, width_per_group: int=64, stride_in_1x1: bool=False):
-    super().__init__()
-    self.block: Type[Union[BasicBlock, Bottleneck]] = {
+@dataclass
+class ResNetConfig:
+  variant: int=18
+  num_classes: int=1000
+  groups: int=1
+  width_per_group: int=64
+  stride_in_1x1: bool=False
+  block: Type[Union[BasicBlock, Bottleneck]] = BasicBlock
+  num_blocks: Tuple[int]=()
+
+  def __post_init__(self):
+    self.block = {
       18: BasicBlock,
       34: BasicBlock,
       50: Bottleneck,
       101: Bottleneck,
       152: Bottleneck
-    }[num]
+    }[self.variant]
+    self.num_blocks = {
+      18: (2,2,2,2),
+      34: (3,4,6,3),
+      50: (3,4,6,3),
+      101: (3,4,23,3),
+      152: (3,8,36,3)
+    }[self.variant]
 
-    self.num_blocks: List[int] = {
-      18: [2,2,2,2],
-      34: [3,4,6,3],
-      50: [3,4,6,3],
-      101: [3,4,23,3],
-      152: [3,8,36,3]
-    }[num]
 
+class ResNet_(nn.Module):
+  def __init__(self, config: ResNetConfig):
+    super().__init__()
+    stride_in_1x1 = config.stride_in_1x1
+    self.block, self.num_blocks = config.block, config.num_blocks
+    self.groups, self.base_width = config.groups, config.width_per_group
     self.in_planes = 64
-    self.groups = groups
-    self.base_width = width_per_group
     self.conv1 = nn.Conv2d(3, self.in_planes, kernel_size=7, stride=2, bias=False, padding=3)
     self.bn1 = nn.BatchNorm2d(self.in_planes)
     self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
@@ -112,7 +128,7 @@ class ResNet_(nn.Module):
     self.layer3 = self._make_layer(self.block, 256, self.num_blocks[2], stride=2, stride_in_1x1=stride_in_1x1)
     self.layer4 = self._make_layer(self.block, 512, self.num_blocks[3], stride=2, stride_in_1x1=stride_in_1x1)
     self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-    self.fc = nn.Linear(512 * self.block.expansion, num_classes)
+    self.fc = nn.Linear(512 * self.block.expansion, config.num_classes)
 
   def _make_layer(self, block: Type[Union[BasicBlock, Bottleneck]], planes: int, num_blocks: int, stride: int, stride_in_1x1: bool):
     strides = [stride] + [1] * (num_blocks-1)
@@ -136,17 +152,16 @@ class ResNet:
     self.categories = categories
 
   @staticmethod
+  @timeit(desc="Load time")
   def from_pretrained(variant: int):
-    import importlib
     assert variant in (18, 34, 50, 101, 152)
+    import importlib
     tv = importlib.import_module("torchvision.models")
     weights = tv.__dict__[f"ResNet{variant}_Weights"].DEFAULT
-    resnet = tv.__dict__[f"resnet{variant}"]
     preprocess, categories = weights.transforms(), weights.meta["categories"]
-    model = resnet(weights=weights)
-    net = ResNet_(variant, len(categories))
-    net.load_state_dict(model.state_dict(), strict=True, assign=True)
-
+    config = ResNetConfig(variant=variant, num_classes=len(categories))
+    net = ResNet_(config)
+    net.load_state_dict(weights.get_state_dict(), strict=True, assign=True)
     return ResNet(net, preprocess, categories)
 
 
