@@ -307,7 +307,7 @@ if __name__ == "__main__":
   device = set_device('cpu') # hardcode, as MPS OOMs
   set_seed(device)
 
-  model = Llama.from_pretrained('7B').to(device)
+  model = Llama.from_pretrained('7B', assign=True).to(device)
 
   num_return_sequences = 4
   max_gen_len = 32

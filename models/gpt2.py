@@ -251,7 +251,7 @@ if __name__ == '__main__':
   device = set_device()
   set_seed(device)
 
-  model = GPT2.from_pretrained('gpt2').to(device)
+  model = GPT2.from_pretrained('gpt2', assign=True).to(device)
 
   print("Testing generation...")
   num_return_sequences = 8
