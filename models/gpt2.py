@@ -7,10 +7,11 @@
 # https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt2/modeling_gpt2.py
 # https://github.com/tinygrad/tinygrad/blob/master/examples/gpt2.py
 
-from typing import Optional, List
+from typing import Optional, List, Set
 from dataclasses import dataclass
-import math, os
+import math
 from tqdm import tqdm
+from helpers import timeit
 
 import torch
 from torch import nn, Tensor
@@ -104,7 +105,7 @@ class Transformer(nn.Module):
     return logits
 
   def apply_weight_sharing(self):
-    self.transformer.wte.weight = self.lm_head.weight
+    self.lm_head.weight = self.transformer.wte.weight
     return self
 
   @staticmethod
@@ -116,35 +117,57 @@ class Transformer(nn.Module):
     if non_embedding: n_params -= self.transformer.wpe.weight.numel()
     return n_params
 
+class Tokenizer:
+  def __init__(self):
+    self.model = tiktoken.get_encoding('gpt2')
+    self.eot_token = self.model.eot_token
+    self.device = 'cpu'
+
+  def encode_batch(self, input: List[str] | str):
+    batch = [input] if isinstance(input, str) else input
+    return torch.tensor(self.model.encode_batch(batch), dtype=torch.long, device=self.device)
+
+  def decode_batch(self, idx: Tensor):
+    return self.model.decode_batch(idx.tolist())
+
 
 class GPT2:
-  def __init__(self, model: Transformer, tokenizer: tiktoken.Encoding):
+  def __init__(self, model: Transformer, tokenizer: Tokenizer):
     self.model = model
     self.tokenizer = tokenizer
     self.device = 'cpu'
 
   def to(self, device):
     self.device = device
+    self.tokenizer.device = device
     self.model = self.model.to(device)
     return self
 
   @staticmethod
-  def from_pretrained(model_type: str='gpt2', half: bool=False):
+  @timeit(desc="Load time", ms=False)
+  def from_pretrained(model_type: str='gpt2', half: bool=False, assign: bool=True):
     config_args = {
       'gpt2':         dict(n_layer=12, n_head=12, n_embd=768),  # 124M params
       'gpt2-medium':  dict(n_layer=24, n_head=16, n_embd=1024), # 350M params
       'gpt2-large':   dict(n_layer=36, n_head=20, n_embd=1280), # 774M params
       'gpt2-xl':      dict(n_layer=48, n_head=25, n_embd=1600), # 1558M params
     }[model_type]
-    from transformers import GPT2LMHeadModel
     model = Transformer(GPTConfig(**config_args))
+    transposed = {'attn.c_attn.weight', 'attn.c_proj.weight', 'mlp.c_fc.weight', 'mlp.c_proj.weight'}
+    if assign: model = GPT2._load_from_cache(model, model_type, transposed=transposed)
+    else: model = GPT2._copy_from_hf(model, model_type, half=half, transposed=transposed)
+    if half: model = model.half()
+    return GPT2(model.apply_weight_sharing(), Tokenizer())
+
+  @staticmethod
+  def _copy_from_hf(model: Transformer, model_type: str, half: bool=False, transposed: Set[str]={}):
+    from transformers import GPT2LMHeadModel
     model_hf = GPT2LMHeadModel.from_pretrained(model_type)
     if half: model, model_hf = model.half(), model_hf.half()
     sd, sd_hf = model.state_dict(), model_hf.state_dict()
     sd_keys = [k for k in sd.keys() if not k.endswith('.attn.bias')]
     sd_keys_hf = [k for k in sd_hf.keys() if not any(k.endswith(w) for w in ('.attn.masked_bias', '.attn.bias'))]
     # copy while ensuring all of the parameters are aligned and match in names and shapes
-    transposed = ['attn.c_attn.weight', 'attn.c_proj.weight', 'mlp.c_fc.weight', 'mlp.c_proj.weight']
     assert len(sd_keys_hf) == len(sd_keys), f"mismatched keys: {len(sd_keys_hf)} != {len(sd_keys)}"
     for k in tqdm(sd_keys_hf, desc=f'Loading pretrained weights'):
       if any(k.endswith(w) for w in transposed):
@@ -153,20 +176,25 @@ class GPT2:
       else:
         assert sd_hf[k].shape == sd[k].shape
         with torch.no_grad(): sd[k].copy_(sd_hf[k])
-    return GPT2(model.apply_weight_sharing(), tiktoken.get_encoding('gpt2'))
+    return model
 
-  def _encode_batch(self, input: List[str] | str):
-    batch = [input] if isinstance(input, str) else input
-    return torch.tensor(self.tokenizer.encode_batch(batch), dtype=torch.long, device=self.device)
-
-  def _decode_batch(self, idx: Tensor):
-    return self.tokenizer.decode_batch(idx.tolist())
+  @staticmethod
+  def _load_from_cache(model: Transformer, model_type: str, transposed: Set[str]={}):
+    from transformers.utils import try_to_load_from_cache
+    import safetensors.torch
+    safetensors_model_file = try_to_load_from_cache(repo_id=model_type, filename="model.safetensors")
+    loaded = safetensors.torch.load_file(str(safetensors_model_file))
+    for k, v in loaded.items():
+      if any(k.endswith(w) for w in transposed):
+        loaded[k] = v.t()
+    model.transformer.load_state_dict(loaded, assign=True, strict=True)
+    return model
 
   @torch.inference_mode()
   def generate(self, prompt: str, max_new_tokens: int, num_return_sequences: int=1,
                temperature: float=1.0, top_k: Optional[int]=None):
     config = self.model.config
-    idx = model._encode_batch(prompt)
+    idx = self.tokenizer.encode_batch(prompt)
     assert idx.size(0) == 1 and num_return_sequences >= 1 and temperature > 0.0
     idx = idx.repeat(num_return_sequences, 1)
     self.model.eval()
@@ -181,7 +209,7 @@ class GPT2:
       probs = F.softmax(logits, dim=-1)
       idx_next = torch.multinomial(probs[:, -1, :], num_samples=1)
       idx = torch.cat((idx, idx_next), dim=-1)
-    return self._decode_batch(idx)
+    return self.tokenizer.decode_batch(idx)
 
   @torch.inference_mode()
   def completion(self, prompts: str | List[str], max_new_tokens: int,
@@ -190,7 +218,7 @@ class GPT2:
     idxs, masks = [], []
     start_pos = max_new_tokens
     for i in range(len(prompts)):
-      idx = tokenizer.encode(prompts[i])
+      idx = tokenizer.model.encode(prompts[i])
       mask = [1 for _ in range(len(idx))]
       start_pos = min(start_pos, len(idx))
       if len(idx) < max_new_tokens:
@@ -215,7 +243,7 @@ class GPT2:
       idx_next = torch.multinomial(probs[:, -1, :], num_samples=1)
       idx[:,[cur_pos]] = torch.where(mask[:, [cur_pos]]>0.5, idx[:,[cur_pos]], idx_next)
       cur_pos += 1
-    return self._decode_batch(idx)
+    return self.tokenizer.decode_batch(idx)
 
 
 if __name__ == '__main__':
