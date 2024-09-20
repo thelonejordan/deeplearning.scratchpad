@@ -5,6 +5,7 @@
 # https://github.com/tinygrad/tinygrad/blob/master/extra/models/resnet.py
 # https://github.com/huggingface/pytorch-image-models/blob/main/timm/models/resnet.py
 # https://github.com/huggingface/pytorch-image-models/blob/main/timm/models/resnetv2.py
+# https://x.com/awnihannun/status/1832511021602500796
 
 import torch
 from torch import nn, Tensor

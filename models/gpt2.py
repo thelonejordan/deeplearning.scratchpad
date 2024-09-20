@@ -145,7 +145,7 @@ class GPT2:
 
   @staticmethod
   @timeit(desc="Load time", ms=False)
-  def from_pretrained(model_type: str='gpt2', half: bool=False, assign: bool=True):
+  def from_pretrained(model_type: str='gpt2', half: bool=False, assign: bool=False):
     config_args = {
       'gpt2':         dict(n_layer=12, n_head=12, n_embd=768),  # 124M params
       'gpt2-medium':  dict(n_layer=24, n_head=16, n_embd=1024), # 350M params
@@ -160,9 +160,9 @@ class GPT2:
     return GPT2(model.apply_weight_sharing(), Tokenizer())
 
   @staticmethod
-  def _copy_from_hf(model: Transformer, model_type: str, half: bool=False, transposed: Set[str]={}):
+  def _copy_from_hf(model: Transformer, checkpoint: str, half: bool=False, transposed: Set[str]={}):
     from transformers import GPT2LMHeadModel
-    model_hf = GPT2LMHeadModel.from_pretrained(model_type)
+    model_hf = GPT2LMHeadModel.from_pretrained(checkpoint)
     if half: model, model_hf = model.half(), model_hf.half()
     sd, sd_hf = model.state_dict(), model_hf.state_dict()
     sd_keys = [k for k in sd.keys() if not k.endswith('.attn.bias')]
@@ -179,10 +179,10 @@ class GPT2:
     return model
 
   @staticmethod
-  def _load_from_cache(model: Transformer, model_type: str, transposed: Set[str]={}):
+  def _load_from_cache(model: Transformer, checkpoint: str, transposed: Set[str]={}):
     from transformers.utils import try_to_load_from_cache
     import safetensors.torch
-    safetensors_model_file = try_to_load_from_cache(repo_id=model_type, filename="model.safetensors")
+    safetensors_model_file = try_to_load_from_cache(repo_id=checkpoint, filename="model.safetensors")
     loaded = safetensors.torch.load_file(str(safetensors_model_file))
     for k, v in loaded.items():
       if any(k.endswith(w) for w in transposed):

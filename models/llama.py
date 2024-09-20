@@ -5,7 +5,7 @@
 # https://github.com/meta-llama/llama/blob/llama_v1/llama/model.py (57b0eb62de0636e75af471e49e2f1862d908d9d8)
 # https://github.com/tinygrad/tinygrad/blob/master/extra/models/llama.py
 
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Set
 from dataclasses import dataclass
 import os, math
 from tqdm import tqdm
@@ -209,7 +209,7 @@ class Llama:
 
   @staticmethod
   @timeit(desc="Load time", ms=False)
-  def from_pretrained(model_type: str='7B', half=False):
+  def from_pretrained(model_type: str='7B', half=False, assign: bool=False):
     assert model_type in ('7B', '13B', '30B', '65B'), f'invalid model_type: {model_type}'
     config_args = {
       '7B' : dict(dim=4096, n_heads=32, n_layers=32), # 6.7B
@@ -218,11 +218,18 @@ class Llama:
       '65B': dict(dim=8192, n_heads=64, n_layers=80), # 65.2B
     }[model_type]
     config = LlamaConfig(**config_args)
-    from transformers import LlamaTokenizer, LlamaForCausalLM
+    model = Transformer(config)
     checkpoint = f'huggyllama/llama-{model_type.lower()}'
+    if assign: model, tokenizer = Llama._load_from_cache(model, checkpoint)
+    else: model, tokenizer = Llama._copy_from_hf(model, checkpoint, half)
+    if half: model = model.half()
+    return Llama(model, tokenizer)
+
+  @staticmethod
+  def _copy_from_hf(model, checkpoint: str, half=False):
+    from transformers import LlamaTokenizer, LlamaForCausalLM
     tokenizer = Tokenizer(LlamaTokenizer.from_pretrained(checkpoint).vocab_file)
     model_hf = LlamaForCausalLM.from_pretrained(checkpoint)
-    model = Transformer(config)
     if half: model, model_hf = model.half(), model_hf.half()
     sd, sd_hf = model.state_dict(), model_hf.state_dict()
     sd_keys, sd_keys_hf = list(sd.keys()), list(sd_hf.keys())
@@ -233,7 +240,21 @@ class Llama:
       assert sd_hf[k].shape == sd[k].shape, f'{k} not found'
       with torch.no_grad(): sd[k].copy_(sd_hf[k])
       del sd_hf[k] # free memory after copying
-    return Llama(model, tokenizer)
+    return model, tokenizer
+
+  @staticmethod
+  def _load_from_cache(model: Transformer, checkpoint: str):
+    from transformers.utils import try_to_load_from_cache
+    import safetensors.torch
+    filenames=["model-00001-of-00002.safetensors", "model-00002-of-00002.safetensors"]
+    model_files = [try_to_load_from_cache(repo_id=checkpoint, filename=filename) for filename in filenames]
+    loaded = dict()
+    for file in model_files: loaded.update(safetensors.torch.load_file(str(file)))
+    loaded = {k:v for k, v in loaded.items() if not k.endswith("freq")}
+    model.load_state_dict(loaded, assign=True, strict=True)
+    tokenizer_path = try_to_load_from_cache(repo_id=checkpoint, filename="tokenizer.model")
+    tokenizer = Tokenizer(tokenizer_path)
+    return model, tokenizer
 
   @torch.inference_mode()
   def generate(self, prompts: List[str], max_gen_len: int, temperature: float=0.8, top_p: float=0.95) -> List[str]:
