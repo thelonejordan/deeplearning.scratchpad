@@ -1,6 +1,9 @@
 # python3 models/mistral_batched.py
 
+# https://mistral.ai/news/announcing-mistral-7b/
 # https://github.com/mistralai/mistral-inference/tree/v1.0.4
+
+# NOTE: This implementation lacks sliding window attention & rolling KV cache
 
 import json
 from dataclasses import dataclass
@@ -14,6 +17,8 @@ from torch import nn, Tensor
 import torch.nn.functional as F
 
 from llama import Tokenizer, RMSNorm, apply_rotary_emb
+
+torch.set_default_dtype(torch.float16)
 
 @dataclass
 class ModelArgs:
@@ -34,7 +39,28 @@ class ModelArgs:
   max_batch_size: int = 0
 
 
-def repeat_kv(keys: Tensor, values: Tensor, repeats: int) -> Tuple[Tensor]:
+def precompute_freqs_cis(dim: int, end: int, theta: float) -> Tensor:
+  freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[: (dim // 2)].float() / dim))
+  t = torch.arange(end, device=freqs.device)  # type: ignore
+  freqs = torch.outer(t, freqs).float()  # type: ignore
+  return torch.polar(torch.ones_like(freqs), freqs)  # complex64
+
+def _reshape_for_broadcast(freqs_cis: Tensor, x: Tensor) -> Tensor:
+    # x: complex - (bsz, seq_len, head_dim / 2), freqs_cis: complex - (seq_len, head_dim / 2)
+    assert 1 < x.ndim
+    assert freqs_cis.shape == (x.shape[1], x.shape[-1]), (freqs_cis.shape,(x.shape[1], x.shape[-1]))
+    shape = [d if i == 1 or i == x.ndim - 1 else 1 for i, d in enumerate(x.shape)]
+    return freqs_cis.view(*shape)
+
+def apply_rotary_emb(xq: Tensor, xk: Tensor, freqs_cis: Tensor) -> Tuple[Tensor, Tensor]:
+  xq_ = torch.view_as_complex(xq.float().reshape(*xq.shape[:-1], -1, 2))
+  xk_ = torch.view_as_complex(xk.float().reshape(*xk.shape[:-1], -1, 2))
+  freqs_cis = _reshape_for_broadcast(freqs_cis, xq_)
+  xq_out = torch.view_as_real(xq_ * freqs_cis).flatten(3)
+  xk_out = torch.view_as_real(xk_ * freqs_cis).flatten(3)
+  return xq_out.type_as(xq), xk_out.type_as(xk)
+
+def repeat_kv(keys: Tensor, values: Tensor, repeats: int) -> Tuple[Tensor, Tensor]:
   keys = torch.repeat_interleave(keys, repeats=repeats, dim=2)
   values = torch.repeat_interleave(values, repeats=repeats, dim=2)
   return keys, values
@@ -50,12 +76,9 @@ class Attention(nn.Module):
     self.wk = nn.Linear(args.dim, args.n_kv_heads * args.head_dim, bias=False)
     self.wv = nn.Linear(args.dim, args.n_kv_heads * args.head_dim, bias=False)
     self.wo = nn.Linear(args.n_heads * args.head_dim, args.dim, bias=False)
-    self.cache_k = torch.empty(
-      args.max_batch_size, args.max_seq_len, self.n_kv_heads, self.head_dim, dtype=torch.float16,
-    )#.cuda()
-    self.cache_v = torch.empty(
-      args.max_batch_size, args.max_seq_len, self.n_kv_heads, self.head_dim, dtype=torch.float16,
-    )#.cuda()
+    cache_size = (args.max_batch_size, args.max_seq_len, self.n_kv_heads, self.head_dim)
+    self.cache_k = torch.empty(cache_size, dtype=torch.float16)
+    self.cache_v = torch.empty(cache_size, dtype=torch.float16)
 
   def forward(self, x: Tensor, freqs_cis: Tensor, positions: Tensor, mask: Optional[Tensor]) -> Tensor:
     bsz, seqlen, _ = x.shape
@@ -66,18 +89,17 @@ class Attention(nn.Module):
     xq, xk = apply_rotary_emb(xq, xk, freqs_cis=freqs_cis)
     # cache
     scatter_pos = positions[None, :, None, None].repeat(bsz, 1, self.n_kv_heads, self.head_dim)
+    self.cache_k, self.cache_v = self.cache_k.to(xk), self.cache_v.to(xv)
     self.cache_k[:bsz].scatter_(dim=1, index=scatter_pos, src=xk)
     self.cache_v[:bsz].scatter_(dim=1, index=scatter_pos, src=xv)
-    if positions.shape[0] > 1:
-        # prefill
-        key, value = repeat_kv(xk, xv, self.repeats)
+    if positions.size(0) > 1:
+      # prefill
+      key, value = repeat_kv(xk, xv, self.repeats)
     else:
       cur_pos = positions[-1].item() + 1
-      key, value = repeat_kv(
-        self.cache_k[:bsz, :cur_pos, ...], self.cache_v[:bsz, :cur_pos, ...], self.repeats)
+      key, value = repeat_kv(self.cache_k[:bsz, :cur_pos, ...], self.cache_v[:bsz, :cur_pos, ...], self.repeats)
     query, key, value = xq.transpose(1, 2), key.transpose(1, 2), value.transpose(1, 2)
-    # scores : [bsz, n_heads, seqlen | 1, seqlen]
-    scores = torch.matmul(query, key.transpose(2, 3)) * (self.head_dim**-0.5)
+    scores = torch.matmul(query, key.transpose(2, 3)) * (self.head_dim**-0.5) # scores : [bsz, n_heads, seqlen | 1, seqlen]
     if mask is not None: scores += mask[None, None, ...]
     scores = F.softmax(scores.float(), dim=-1).type_as(query)
     output = torch.matmul(scores, value)  # (bs, n_local_heads, slen, head_dim)
@@ -99,50 +121,40 @@ class FeedForward(nn.Module):
 class TransformerBlock(nn.Module):
   def __init__(self, args: ModelArgs):
     super().__init__()
-    self.n_heads = args.n_heads
-    self.dim = args.dim
+    self.n_heads, self.dim = args.n_heads, args.dim
     self.attention = Attention(args)
     self.feed_forward = FeedForward(args=args)
     self.attention_norm = RMSNorm(args.dim, eps=args.norm_eps)
     self.ffn_norm = RMSNorm(args.dim, eps=args.norm_eps)
-    self.args = args
 
   def forward(self, x: Tensor, freqs_cis: Tensor, positions: Tensor, mask: Optional[Tensor]) -> Tensor:
-      x = x + self.attention.forward(self.attention_norm(x), freqs_cis, positions, mask)
-      x = x + self.feed_forward.forward(self.ffn_norm(x))
-      return x
-
-
-def precompute_freqs_cis(dim: int, end: int, theta: float) -> Tensor:
-  freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[: (dim // 2)].float() / dim))
-  t = torch.arange(end, device=freqs.device)  # type: ignore
-  freqs = torch.outer(t, freqs).float()  # type: ignore
-  return torch.polar(torch.ones_like(freqs), freqs)  # complex64
+    x = x + self.attention(self.attention_norm(x), freqs_cis, positions, mask)
+    x = x + self.feed_forward(self.ffn_norm(x))
+    return x
 
 
 class Transformer(nn.Module):
   def __init__(self, args: ModelArgs):
     super().__init__()
+    assert args.vocab_size > 0
     self.args = args
-    self.vocab_size = args.vocab_size
-    self.n_layers = args.n_layers
-    assert self.vocab_size > 0
+    self.vocab_size, self.n_layers = args.vocab_size, args.n_layers
 
     self.tok_embeddings = nn.Embedding(args.vocab_size, args.dim)
     self.layers = nn.ModuleList([TransformerBlock(args=args) for _ in range(args.n_layers)])
     self.norm = RMSNorm(args.dim, eps=args.norm_eps)
     self.output = nn.Linear(args.dim, args.vocab_size, bias=False)
     theta = self.args.rope_theta or 1000000.0
-    self.freqs_cis = precompute_freqs_cis(self.args.head_dim, 128_000, theta).to("cpu")
+    self.freqs_cis = precompute_freqs_cis(self.args.head_dim, 128_000, theta)
 
   def forward(self, input_ids: Tensor, positions: Tensor):
-    h = self.tok_embeddings(input_ids)
-    freqs_cis = self.freqs_cis[positions]
-    mask: Optional[torch.Tensor] = None
-    if input_ids.shape[1] > 1:
-      seqlen = input_ids.shape[1]
-      tensor = torch.full((seqlen, seqlen), dtype=h.dtype, fill_value=1, device=h.device)
-      mask = torch.tril(tensor, diagonal=0).to(h.dtype)
+    seqlen = input_ids.size(1)
+    h: Tensor = self.tok_embeddings(input_ids)
+    freqs_cis = self.freqs_cis.to(input_ids.device)[positions]
+    mask: Optional[Tensor] = None
+    if seqlen > 1:
+      base = torch.full((seqlen, seqlen), fill_value=1, dtype=h.dtype, device=h.device)
+      mask = torch.tril(base, diagonal=0).type_as(h)
       mask = torch.triu(mask, diagonal=-self.args.max_seq_len)
       mask = torch.log(mask)
     for layer in self.layers: h = layer(h, freqs_cis, positions, mask)
@@ -162,8 +174,8 @@ class Mistral:
 
   @staticmethod
   @timeit(desc="Load time", ms=False)
-  def from_pretrained(folder: str, max_batch_size: int = 1):
-    model = Mistral.load_model(Path(folder), max_batch_size)
+  def from_pretrained(folder: str, max_batch_size: int = 1, device="cpu", dtype=torch.float16):
+    model = Mistral.load_model(Path(folder), max_batch_size, device, dtype)
     tokenizer = Mistral.load_tokenizer(Path(folder))
     return Mistral(model, tokenizer)
 
@@ -200,15 +212,13 @@ class Mistral:
     prompt_lens = [len(x) for x in encoded_prompts]
     min_prompt_len = min(prompt_lens)
     max_prompt_len = max(prompt_lens)
-    input_tokens = torch.full(
-      (len(prompts), max_prompt_len), tokenizer.pad_id, dtype=torch.long, device=self.device
-    )
+    input_tokens = torch.full((len(prompts), max_prompt_len), tokenizer.pad_id, dtype=torch.long, device=self.device)
     for i, encoded in enumerate(encoded_prompts):
       input_tokens[i, : len(encoded)] = torch.tensor(encoded).to(input_tokens)
     input_mask = input_tokens != tokenizer.pad_id
     # pre-fill
-    positions = torch.arange(0, min_prompt_len)#.to("cuda")
-    logits = model.forward(input_tokens[:, :min_prompt_len], positions)
+    positions = torch.arange(0, min_prompt_len).to(self.device)
+    logits = model(input_tokens[:, :min_prompt_len], positions)
     logprobs = F.log_softmax(logits, dim=-1)
     # decode
     generated = []
@@ -221,7 +231,7 @@ class Mistral:
       all_logprobs.append(logprobs[:, -1, :].gather(1, next_token[:, None]))
       generated.append(next_token[:, None])
       logits = model(next_token[:, None], torch.LongTensor([cur_pos]).to(next_token))
-      logprobs = nn.functional.log_softmax(logits, dim=-1)
+      logprobs = F.log_softmax(logits, dim=-1)
       cur_pos += 1
 
     all_logprobs = torch.cat(all_logprobs, 1)
@@ -239,7 +249,7 @@ if __name__ == "__main__":
   set_seed(device)
 
   model_path = "downloads/mistral-7B-v0.1"
-  model = Mistral.from_pretrained(model_path, max_batch_size=3).to(device)
+  model = Mistral.from_pretrained(model_path, max_batch_size=3, device=device, dtype=torch.bfloat16)
 
   max_tokens: int = 35
   context = [
