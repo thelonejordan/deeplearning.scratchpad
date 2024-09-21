@@ -2,6 +2,7 @@
 
 # Paper: https://papers.nips.cc/paper_files/paper/2012/hash/c399862d3b9d6b76c8436e924a68c45b-Abstract.html
 # Implementation: https://github.com/akrizhevsky/cuda-convnet2
+# Paper: https://arxiv.org/abs/1404.5997
 
 # Introduction ***
 # subsets of ImageNet used in the ILSVRC-2010 and ILSVRC-2012
