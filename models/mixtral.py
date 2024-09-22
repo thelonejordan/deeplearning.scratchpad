@@ -167,9 +167,10 @@ class Mixtral:
     self.model = model
     self.tokenizer = tokenizer
     self.args = self.model.config
-    self.device = 'cpu'
 
-  def to(self, device):
-    self.device = device
+  @property
+  def device(self) -> torch.device: return next(self.model.parameters()).device
+
+  def to(self, device: torch.device):
     self.model = self.model.to(device)
     return self

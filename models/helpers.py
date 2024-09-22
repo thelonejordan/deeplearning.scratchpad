@@ -20,7 +20,7 @@ def timer(func, desc, ms):
 def timeit(desc=None, ms=True):
   return partial(timer, desc=desc, ms=ms)
 
-def set_device(device=None):
+def set_device(device: Optional[str]=None) -> torch.device:
   if device is None:
     device = 'cpu'
     if torch.cuda.is_available():
@@ -28,10 +28,11 @@ def set_device(device=None):
     elif torch.backends.mps.is_available():
       device = 'mps'
   print(f'Using device: {device}')
-  return device
+  return torch.device(device)
 
-def set_seed(device: str='cpu', seed: Optional[int]=None):
+def set_seed(device: Optional[torch.device]=None, seed: Optional[int]=None):
   if seed is None: seed = int(os.getenv("SEED", 420))
+  if device is None: device = torch.device('cpu')
   torch.manual_seed(seed)
-  if device == 'cuda': torch.cuda.manual_seed(seed)
-  if device == 'mps': torch.mps.manual_seed(seed)
+  if device.type == 'cuda': torch.cuda.manual_seed(seed)
+  if device.type == 'mps': torch.mps.manual_seed(seed)

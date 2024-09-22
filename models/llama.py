@@ -200,10 +200,11 @@ class Llama:
   def __init__(self, model: Transformer, tokenizer: Tokenizer):
     self.model = model
     self.tokenizer = tokenizer
-    self.device = 'cpu'
 
-  def to(self, device):
-    self.device = device
+  @property
+  def device(self) -> torch.device: return next(self.model.parameters()).device
+
+  def to(self, device: torch.device):
     self.model = self.model.to(device)
     return self
 

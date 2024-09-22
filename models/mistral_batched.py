@@ -8,7 +8,7 @@
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import  Optional, List, Tuple
 from helpers import timeit
 
 import safetensors.torch
@@ -160,15 +160,17 @@ class Transformer(nn.Module):
     for layer in self.layers: h = layer(h, freqs_cis, positions, mask)
     return self.output(self.norm(h)).float()
 
+
 class Mistral:
   def __init__(self, model: Transformer, tokenizer: Tokenizer):
     self.model = model
     self.tokenizer = tokenizer
     self.config = model.config
-    self.device = 'cpu'
 
-  def to(self, device):
-    self.device = device
+  @property
+  def device(self) -> torch.device: return next(self.model.parameters()).device
+
+  def to(self, device: torch.device):
     self.model = self.model.to(device)
     return self
 
@@ -245,7 +247,7 @@ class Mistral:
 
 if __name__ == "__main__":
   from helpers import set_device, set_seed
-  device = set_device('cpu') # hardcode, as MPS OOMs
+  device = set_device()
   set_seed(device)
 
   model_path = "downloads/mistral-7B-v0.1"

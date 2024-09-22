@@ -19,11 +19,11 @@ from torch.nn import functional as F
 
 
 def conv3x3(in_planes: int, out_planes: int, stride: int=1, groups: int=1) -> nn.Conv2d:
-  """3x3 convolution with padding"""
+  #3x3 convolution with padding
   return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride, padding=1, groups=groups, bias=False)
 
 def conv1x1(in_planes: int, out_planes: int, stride: int=1) -> nn.Conv2d:
-  """1x1 convolution"""
+  # 1x1 convolution
   return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)
 
 
@@ -129,7 +129,7 @@ class ResNet_(nn.Module):
     self.avgpool = nn.AdaptiveAvgPool2d(1)
     self.fc = nn.Linear(512 * self.block.expansion, config.num_classes)
 
-  def _make_layer(self, block: Type[Union[BasicBlock, Bottleneck]], planes: int, num_blocks: int, stride: int, stride_in_1x1: bool):
+  def _make_layer(self, block: Union[Type[BasicBlock], Type[Bottleneck]], planes: int, num_blocks: int, stride: int, stride_in_1x1: bool):
     strides = [stride] + [1] * (num_blocks-1)
     layers = []
     for stride in strides:
@@ -150,6 +150,13 @@ class ResNet:
     self.preprocess = preprocess
     self.categories = categories
 
+  @property
+  def device(self) -> torch.device: return next(self.net.parameters()).device
+
+  def to(self, device: torch.device):
+    self.net = self.net.to(device)
+    return self
+
   @staticmethod
   @timeit(desc="Load time")
   def from_pretrained(variant: int):
@@ -165,12 +172,16 @@ class ResNet:
 
 
 if __name__ == "__main__":
+  from helpers import set_device, set_seed
+  device = set_device()
+  set_seed(device)
+
   from torchvision.io import read_image
-  model = ResNet.from_pretrained(50)
+  model = ResNet.from_pretrained(50).to(device)
   img = read_image("downloads/images/HopperGrace300px.jpg")
   model.net.eval()
   batch = model.preprocess(img).unsqueeze(0)
-  prediction = F.softmax(model.net(batch).squeeze(0), dim=0)
+  prediction = F.softmax(model.net(batch.to(device)).squeeze(0), dim=0)
   class_id = prediction.argmax().item()
   score = prediction[class_id].item()
   category_name = model.categories[class_id]

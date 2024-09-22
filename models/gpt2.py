@@ -121,11 +121,10 @@ class Tokenizer:
   def __init__(self):
     self.model = tiktoken.get_encoding('gpt2')
     self.eot_token = self.model.eot_token
-    self.device = 'cpu'
 
-  def encode_batch(self, input: List[str] | str):
+  def encode_batch(self, input: List[str] | str, device: torch.device):
     batch = [input] if isinstance(input, str) else input
-    return torch.tensor(self.model.encode_batch(batch), dtype=torch.long, device=self.device)
+    return torch.tensor(self.model.encode_batch(batch), dtype=torch.long, device=device)
 
   def decode_batch(self, idx: Tensor):
     return self.model.decode_batch(idx.tolist())
@@ -135,11 +134,11 @@ class GPT2:
   def __init__(self, model: Transformer, tokenizer: Tokenizer):
     self.model = model
     self.tokenizer = tokenizer
-    self.device = 'cpu'
 
-  def to(self, device):
-    self.device = device
-    self.tokenizer.device = device
+  @property
+  def device(self) -> torch.device: return next(self.model.parameters()).device
+
+  def to(self, device: torch.device):
     self.model = self.model.to(device)
     return self
 
@@ -194,7 +193,7 @@ class GPT2:
   def generate(self, prompt: str, max_new_tokens: int, num_return_sequences: int=1,
                temperature: float=1.0, top_k: Optional[int]=None):
     config = self.model.config
-    idx = self.tokenizer.encode_batch(prompt)
+    idx = self.tokenizer.encode_batch(prompt, device=self.device)
     assert idx.size(0) == 1 and num_return_sequences >= 1 and temperature > 0.0
     idx = idx.repeat(num_return_sequences, 1)
     self.model.eval()
