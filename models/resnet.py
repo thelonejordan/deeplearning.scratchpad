@@ -3,7 +3,6 @@
 # https://pytorch.org/vision/stable/models/resnet.html
 # https://github.com/pytorch/vision/blob/main/torchvision/models/resnet.py
 # https://arxiv.org/abs/1512.03385
-# https://catalog.ngc.nvidia.com/orgs/nvidia/resources/resnet_50_v1_5_for_pytorch
 # https://d2l.ai/chapter_convolutional-modern/resnet.html
 # https://github.com/tinygrad/tinygrad/blob/master/extra/models/resnet.py
 # https://github.com/huggingface/pytorch-image-models/blob/main/timm/models/resnet.py
@@ -93,7 +92,7 @@ class ResNetConfig:
   groups: int=1
   width_per_group: int=64
   stride_in_1x1: bool=False
-  block: Type[Union[BasicBlock, Bottleneck]] = BasicBlock
+  block: Union[Type[BasicBlock], Type[Bottleneck]] = BasicBlock
   num_blocks: Tuple[int]=()
 
   def __post_init__(self):
@@ -127,7 +126,7 @@ class ResNet_(nn.Module):
     self.layer2 = self._make_layer(self.block, 128, self.num_blocks[1], stride=2, stride_in_1x1=stride_in_1x1)
     self.layer3 = self._make_layer(self.block, 256, self.num_blocks[2], stride=2, stride_in_1x1=stride_in_1x1)
     self.layer4 = self._make_layer(self.block, 512, self.num_blocks[3], stride=2, stride_in_1x1=stride_in_1x1)
-    self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+    self.avgpool = nn.AdaptiveAvgPool2d(1)
     self.fc = nn.Linear(512 * self.block.expansion, config.num_classes)
 
   def _make_layer(self, block: Type[Union[BasicBlock, Bottleneck]], planes: int, num_blocks: int, stride: int, stride_in_1x1: bool):
@@ -171,7 +170,7 @@ if __name__ == "__main__":
   img = read_image("downloads/images/HopperGrace300px.jpg")
   model.net.eval()
   batch = model.preprocess(img).unsqueeze(0)
-  prediction = model.net(batch).squeeze(0).softmax(0)
+  prediction = F.softmax(model.net(batch).squeeze(0), dim=0)
   class_id = prediction.argmax().item()
   score = prediction[class_id].item()
   category_name = model.categories[class_id]
