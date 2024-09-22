@@ -21,7 +21,7 @@ from llama import Tokenizer, RMSNorm, apply_rotary_emb
 torch.set_default_dtype(torch.float16)
 
 @dataclass
-class ModelArgs:
+class MistralConfig:
   dim: int
   n_layers: int
   head_dim: int
@@ -67,16 +67,16 @@ def repeat_kv(keys: Tensor, values: Tensor, repeats: int) -> Tuple[Tensor, Tenso
 
 
 class Attention(nn.Module):
-  def __init__(self, args: ModelArgs):
+  def __init__(self, config: MistralConfig):
     super().__init__()
-    # self.args = args
-    self.head_dim, self.n_heads, self.n_kv_heads = args.head_dim, args.n_heads, args.n_kv_heads
+    # self.config = config
+    self.head_dim, self.n_heads, self.n_kv_heads = config.head_dim, config.n_heads, config.n_kv_heads
     self.repeats = self.n_heads // self.n_kv_heads
-    self.wq = nn.Linear(args.dim, args.n_heads * args.head_dim, bias=False)
-    self.wk = nn.Linear(args.dim, args.n_kv_heads * args.head_dim, bias=False)
-    self.wv = nn.Linear(args.dim, args.n_kv_heads * args.head_dim, bias=False)
-    self.wo = nn.Linear(args.n_heads * args.head_dim, args.dim, bias=False)
-    cache_size = (args.max_batch_size, args.max_seq_len, self.n_kv_heads, self.head_dim)
+    self.wq = nn.Linear(config.dim, config.n_heads * config.head_dim, bias=False)
+    self.wk = nn.Linear(config.dim, config.n_kv_heads * config.head_dim, bias=False)
+    self.wv = nn.Linear(config.dim, config.n_kv_heads * config.head_dim, bias=False)
+    self.wo = nn.Linear(config.n_heads * config.head_dim, config.dim, bias=False)
+    cache_size = (config.max_batch_size, config.max_seq_len, self.n_kv_heads, self.head_dim)
     self.cache_k = torch.empty(cache_size, dtype=torch.float16)
     self.cache_v = torch.empty(cache_size, dtype=torch.float16)
 
@@ -108,24 +108,24 @@ class Attention(nn.Module):
 
 
 class FeedForward(nn.Module):
-  def __init__(self, args: ModelArgs):
+  def __init__(self, config: MistralConfig):
     super().__init__()
-    self.w1 = nn.Linear(args.dim, args.hidden_dim, bias=False)
-    self.w2 = nn.Linear(args.hidden_dim, args.dim, bias=False)
-    self.w3 = nn.Linear(args.dim, args.hidden_dim, bias=False)
+    self.w1 = nn.Linear(config.dim, config.hidden_dim, bias=False)
+    self.w2 = nn.Linear(config.hidden_dim, config.dim, bias=False)
+    self.w3 = nn.Linear(config.dim, config.hidden_dim, bias=False)
 
   def forward(self, x) -> Tensor:
     return self.w2(F.silu(self.w1(x)) * self.w3(x))
 
 
 class TransformerBlock(nn.Module):
-  def __init__(self, args: ModelArgs):
+  def __init__(self, config: MistralConfig):
     super().__init__()
-    self.n_heads, self.dim = args.n_heads, args.dim
-    self.attention = Attention(args)
-    self.feed_forward = FeedForward(args=args)
-    self.attention_norm = RMSNorm(args.dim, eps=args.norm_eps)
-    self.ffn_norm = RMSNorm(args.dim, eps=args.norm_eps)
+    self.n_heads, self.dim = config.n_heads, config.dim
+    self.attention = Attention(config)
+    self.feed_forward = FeedForward(config=config)
+    self.attention_norm = RMSNorm(config.dim, eps=config.norm_eps)
+    self.ffn_norm = RMSNorm(config.dim, eps=config.norm_eps)
 
   def forward(self, x: Tensor, freqs_cis: Tensor, positions: Tensor, mask: Optional[Tensor]) -> Tensor:
     x = x + self.attention(self.attention_norm(x), freqs_cis, positions, mask)
@@ -134,18 +134,18 @@ class TransformerBlock(nn.Module):
 
 
 class Transformer(nn.Module):
-  def __init__(self, args: ModelArgs):
+  def __init__(self, config: MistralConfig):
     super().__init__()
-    assert args.vocab_size > 0
-    self.args = args
-    self.vocab_size, self.n_layers = args.vocab_size, args.n_layers
+    assert config.vocab_size > 0
+    self.config = config
+    self.vocab_size, self.n_layers = config.vocab_size, config.n_layers
 
-    self.tok_embeddings = nn.Embedding(args.vocab_size, args.dim)
-    self.layers = nn.ModuleList([TransformerBlock(args=args) for _ in range(args.n_layers)])
-    self.norm = RMSNorm(args.dim, eps=args.norm_eps)
-    self.output = nn.Linear(args.dim, args.vocab_size, bias=False)
-    theta = self.args.rope_theta or 1000000.0
-    self.freqs_cis = precompute_freqs_cis(self.args.head_dim, 128_000, theta)
+    self.tok_embeddings = nn.Embedding(config.vocab_size, config.dim)
+    self.layers = nn.ModuleList([TransformerBlock(config=config) for _ in range(config.n_layers)])
+    self.norm = RMSNorm(config.dim, eps=config.norm_eps)
+    self.output = nn.Linear(config.dim, config.vocab_size, bias=False)
+    theta = self.config.rope_theta or 1000000.0
+    self.freqs_cis = precompute_freqs_cis(self.config.head_dim, 128_000, theta)
 
   def forward(self, input_ids: Tensor, positions: Tensor):
     seqlen = input_ids.size(1)
@@ -155,7 +155,7 @@ class Transformer(nn.Module):
     if seqlen > 1:
       base = torch.full((seqlen, seqlen), fill_value=1, dtype=h.dtype, device=h.device)
       mask = torch.tril(base, diagonal=0).type_as(h)
-      mask = torch.triu(mask, diagonal=-self.args.max_seq_len)
+      mask = torch.triu(mask, diagonal=-self.config.max_seq_len)
       mask = torch.log(mask)
     for layer in self.layers: h = layer(h, freqs_cis, positions, mask)
     return self.output(self.norm(h)).float()
@@ -164,7 +164,7 @@ class Mistral:
   def __init__(self, model: Transformer, tokenizer: Tokenizer):
     self.model = model
     self.tokenizer = tokenizer
-    self.args = model.args
+    self.config = model.config
     self.device = 'cpu'
 
   def to(self, device):
@@ -182,9 +182,9 @@ class Mistral:
   @staticmethod
   def load_model(folder: Path, max_batch_size: int = 1, device="cpu", dtype=torch.float16):
     with open(Path(folder) / "params.json", "r") as f:
-      model_args = ModelArgs(**json.load(f))
-    model_args.max_batch_size = max_batch_size
-    model = Transformer(model_args)
+      config = MistralConfig(**json.load(f))
+    config.max_batch_size = max_batch_size
+    model = Transformer(config)
     pt_model_file = Path(folder) / "consolidated.00.pth"
     safetensors_model_file = Path(folder) / "consolidated.safetensors"
     assert (
