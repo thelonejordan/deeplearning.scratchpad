@@ -11,7 +11,7 @@
 
 from typing import Optional
 from dataclasses import dataclass
-import os, math
+import math
 from tqdm import tqdm
 from helpers import timeit
 
@@ -20,7 +20,7 @@ from torch import Tensor, nn
 from torch.nn import functional as F
 
 from llama import precompute_freqs_cis, apply_rotary_emb, sample_top_p
-from llama import RMSNorm, Tokenizer
+from llama import RMSNorm, Tokenizer, FeedForward
 
 @dataclass
 class LlamaConfig:
@@ -91,8 +91,8 @@ class Attention(nn.Module):
     keys = repeat_kv(keys, self.n_rep) # (bs, seqlen, n_local_heads, head_dim)
     values = repeat_kv(values, self.n_rep) # (bs, seqlen, n_local_heads, head_dim)
     xq, keys, values = xq.transpose(1, 2), keys.transpose(1, 2), values.transpose(1, 2)
-
     output = self._attention(xq, keys, values, mask, 1.0/math.sqrt(self.head_dim))
+
     output = output.transpose(1, 2).contiguous().view(bsz, seqlen, -1)
     output = self.o_proj(output)
     return output
@@ -109,25 +109,14 @@ class Attention(nn.Module):
     return output
 
 
-class FeedForward(nn.Module):
-  def __init__(self, config: LlamaConfig):
-    super().__init__()
-    hidden_dim = compute_hidden_dim(config.dim, config.multiple_of, config.ffn_dim_multiplier)
-    self.gate_proj = nn.Linear(config.dim, config.hidden_dim, bias=False)
-    self.up_proj = nn.Linear(config.dim, config.hidden_dim, bias=False)
-    self.down_proj = nn.Linear(hidden_dim, config.dim, bias=False)
-
-  def forward(self, x: Tensor):
-    return self.down_proj(F.silu(self.gate_proj(x)) * self.up_proj(x))
-
-
 class TransformerBlock(nn.Module):
   def __init__(self, config: LlamaConfig):
     super().__init__()
+    hidden_dim = compute_hidden_dim(config.dim, config.multiple_of, config.ffn_dim_multiplier)
     self.input_layernorm = RMSNorm(config.dim, eps=config.norm_eps)
     self.self_attn = Attention(config)
     self.post_attention_layernorm = RMSNorm(config.dim, eps=config.norm_eps)
-    self.mlp = FeedForward(config)
+    self.mlp = FeedForward(config.dim, hidden_dim)
 
   def forward(self, x: Tensor, start_pos: int, freqs_cis: Tensor, mask: Optional[Tensor]):
     h = x + self.self_attn(self.input_layernorm(x), start_pos, freqs_cis, mask)
@@ -192,9 +181,8 @@ class Llama:
       '70B': dict(dim=8192, n_heads=64, n_kv_heads=8, n_layers=80),
     }[model_type]
     config = LlamaConfig(**config_args)
-    checkpoint = f'meta-llama/Llama-2-{model_type.lower()}' + ('-chat-hf' if chat else '-hf')
     model = Transformer(config)
-    checkpoint = f'huggyllama/llama-{model_type.lower()}'
+    checkpoint = f'meta-llama/Llama-2-{model_type.lower()}' + ('-chat-hf' if chat else '-hf')
     if assign: model, tokenizer = Llama._load_from_cache(model, checkpoint)
     else: model, tokenizer = Llama._copy_from_hf(model, checkpoint, half)
     if half: model = model.half()

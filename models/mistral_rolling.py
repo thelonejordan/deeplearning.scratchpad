@@ -40,18 +40,10 @@ def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0) -> Tensor:
   freqs = torch.outer(t, freqs).float()  # type: ignore
   return torch.polar(torch.ones_like(freqs), freqs)  # complex64
 
-def _reshape_for_broadcast(freqs_cis: Tensor, x: Tensor) -> Tensor:
-  # freqs_cis: complex - (seq_len, head_dim / 2)
-  # x: complex - (bsz, seq_len, head_dim / 2)
-  assert 1 < x.ndim
-  assert freqs_cis.shape == (x.shape[1], x.shape[-1]), (freqs_cis.shape, (x.shape[1], x.shape[-1]))
-  shape = [d if i == 1 or i == x.ndim - 1 else 1 for i, d in enumerate(x.shape)]
-  return freqs_cis.view(*shape)
-
 def apply_rotary_emb(xq: Tensor, xk: Tensor, freqs_cis: Tensor) -> Tuple[Tensor, Tensor]:
   xq_ = torch.view_as_complex(xq.float().reshape(*xq.shape[:-1], -1, 2))
   xk_ = torch.view_as_complex(xk.float().reshape(*xk.shape[:-1], -1, 2))
-  freqs_cis = _reshape_for_broadcast(freqs_cis, xq_)
+  freqs_cis = freqs_cis[:, None, :]
   xq_out = torch.view_as_real(xq_ * freqs_cis).flatten(3)
   xk_out = torch.view_as_real(xk_ * freqs_cis).flatten(3)
   return xq_out.type_as(xq), xk_out.type_as(xk)
@@ -198,7 +190,7 @@ class Tokenizer:
   def pad_id(self) -> int: return self._model.pad_id()
 
   def encode(self, s: str, bos: bool=True, eos: bool=False) -> List[int]:
-    assert type(s) is str
+    assert isinstance(s, str)
     t: List[int] = self._model.encode(s)
     if bos: t = [self.bos_id] + t
     if eos: t = t + [self.eos_id]

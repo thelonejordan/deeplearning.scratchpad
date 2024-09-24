@@ -7,7 +7,8 @@
 
 from typing import Optional, Tuple, List
 from dataclasses import dataclass
-import os, math
+from pathlib import Path
+import math
 from tqdm import tqdm
 from helpers import timeit
 
@@ -83,8 +84,8 @@ class Attention(nn.Module):
     self.v_proj = nn.Linear(config.dim, config.dim, bias=False)
     self.o_proj = nn.Linear(config.dim, config.dim, bias=False)
 
-    self.cache_k: Tensor = torch.zeros((config.max_batch_size, config.max_seq_len, self.n_heads, self.head_dim))
-    self.cache_v: Tensor = torch.zeros((config.max_batch_size, config.max_seq_len, self.n_heads, self.head_dim))
+    self.cache_k = torch.zeros(config.max_batch_size, config.max_seq_len, self.n_heads, self.head_dim)
+    self.cache_v = torch.zeros(config.max_batch_size, config.max_seq_len, self.n_heads, self.head_dim)
 
   def forward(self, x: Tensor, start_pos: int, freqs_cis: Tensor, mask: Optional[Tensor]=None):
     bsz, seqlen, _ = x.size()
@@ -122,11 +123,11 @@ class Attention(nn.Module):
 
 
 class FeedForward(nn.Module):
-  def __init__(self, config: LlamaConfig):
+  def __init__(self, dim: int, hidden_dim: int):
     super().__init__()
-    self.gate_proj = nn.Linear(config.dim, config.hidden_dim, bias=False)
-    self.up_proj = nn.Linear(config.dim, config.hidden_dim, bias=False)
-    self.down_proj = nn.Linear(config.hidden_dim, config.dim, bias=False)
+    self.gate_proj = nn.Linear(dim, hidden_dim, bias=False)
+    self.up_proj = nn.Linear(dim, hidden_dim, bias=False)
+    self.down_proj = nn.Linear(hidden_dim, dim, bias=False)
 
   def forward(self, x: Tensor):
     return self.down_proj(F.silu(self.gate_proj(x)) * self.up_proj(x))
@@ -138,7 +139,7 @@ class Block(nn.Module):
     self.input_layernorm = RMSNorm(config.dim, eps=config.norm_eps)
     self.self_attn = Attention(config)
     self.post_attention_layernorm = RMSNorm(config.dim, eps=config.norm_eps)
-    self.mlp = FeedForward(config)
+    self.mlp = FeedForward(config.dim, config.hidden_dim)
 
   def forward(self, x: Tensor, start_pos: int, freqs_cis: Tensor, mask: Optional[Tensor]):
     x = x + self.self_attn(self.input_layernorm(x), start_pos, freqs_cis, mask)
@@ -183,7 +184,7 @@ class Transformer(nn.Module):
 
 class Tokenizer:
   def __init__(self, model_path: str):
-    assert os.path.isfile(model_path), model_path
+    assert Path(model_path).exists(), model_path
     self.sp_model = SentencePieceProcessor(model_file=model_path)
     print(f"Reloaded SentencePiece model from {model_path}")
     self.n_words: int = self.sp_model.vocab_size()
@@ -198,7 +199,7 @@ class Tokenizer:
   def pad_id(self) -> int: return self.sp_model.pad_id()
 
   def encode(self, s: str, bos: bool, eos: bool) -> List[int]:
-    assert type(s) is str
+    assert isinstance(s, str)
     t = self.sp_model.encode(s)
     if bos: t = [self.bos_id] + t
     if eos: t = t + [self.eos_id]
