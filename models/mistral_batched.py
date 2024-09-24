@@ -60,9 +60,9 @@ def apply_rotary_emb(xq: Tensor, xk: Tensor, freqs_cis: Tensor) -> Tuple[Tensor,
   xk_out = torch.view_as_real(xk_ * freqs_cis).flatten(3)
   return xq_out.type_as(xq), xk_out.type_as(xk)
 
-def repeat_kv(keys: Tensor, values: Tensor, repeats: int) -> Tuple[Tensor, Tensor]:
-  keys = torch.repeat_interleave(keys, repeats=repeats, dim=2)
-  values = torch.repeat_interleave(values, repeats=repeats, dim=2)
+def repeat_kv(keys: Tensor, values: Tensor, repeats: int, dim: int=2) -> Tuple[Tensor, Tensor]:
+  keys = torch.repeat_interleave(keys, repeats=repeats, dim=dim)
+  values = torch.repeat_interleave(values, repeats=repeats, dim=dim)
   return keys, values
 
 
@@ -99,12 +99,20 @@ class Attention(nn.Module):
       cur_pos = positions[-1].item() + 1
       key, value = repeat_kv(self.cache_k[:bsz, :cur_pos, ...], self.cache_v[:bsz, :cur_pos, ...], self.repeats)
     query, key, value = xq.transpose(1, 2), key.transpose(1, 2), value.transpose(1, 2)
-    scores = torch.matmul(query, key.transpose(2, 3)) * (self.head_dim**-0.5) # scores : [bsz, n_heads, seqlen | 1, seqlen]
-    if mask is not None: scores += mask[None, None, ...]
-    scores = F.softmax(scores.float(), dim=-1).type_as(query)
-    output = torch.matmul(scores, value)  # (bs, n_local_heads, slen, head_dim)
+    output = self._attention(query, key, value, mask, self.head_dim**-0.5)
     output = output.transpose(1, 2).contiguous().view(bsz, seqlen, -1)
     return self.wo(output)
+
+  @staticmethod
+  def _attention(query: Tensor, key: Tensor, value: Tensor, mask: Optional[Tensor], scale: float, use_fused: bool=False):
+    if use_fused:
+      output = F.scaled_dot_product_attention(query, key, value, mask, scale=scale)
+      return output
+    scores = torch.matmul(query, key.transpose(2, 3)) * scale # scores : [bsz, n_heads, seqlen | 1, seqlen]
+    if mask is not None: scores += mask#[None, None, ...]
+    scores = F.softmax(scores.float(), dim=-1).type_as(query)
+    output = torch.matmul(scores, value)  # (bs, n_local_heads, slen, head_dim)
+    return output
 
 
 class FeedForward(nn.Module):

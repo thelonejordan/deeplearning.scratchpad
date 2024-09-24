@@ -92,12 +92,20 @@ class Attention(nn.Module):
     values = repeat_kv(values, self.n_rep) # (bs, seqlen, n_local_heads, head_dim)
     xq, keys, values = xq.transpose(1, 2), keys.transpose(1, 2), values.transpose(1, 2)
 
-    scores = (xq @ keys.transpose(2, 3)) / math.sqrt(self.head_dim)
-    if mask is not None: scores = scores + mask
-    scores = F.softmax(scores.float(), dim=-1).type_as(xq)
-    output = scores @ values
+    output = self._attention(xq, keys, values, mask, 1.0/math.sqrt(self.head_dim))
     output = output.transpose(1, 2).contiguous().view(bsz, seqlen, -1)
     output = self.o_proj(output)
+    return output
+
+  @staticmethod
+  def _attention(query: Tensor, key: Tensor, value: Tensor, mask: Optional[Tensor], scale: float, use_fused: bool=True):
+    if use_fused:
+      output = F.scaled_dot_product_attention(query, key, value, mask, scale=scale)
+      return output
+    scores = (query @ key.transpose(2, 3)) * scale
+    if mask is not None: scores = scores + mask
+    scores = F.softmax(scores.float(), dim=-1).type_as(query)
+    output = scores @ value
     return output
 
 

@@ -7,7 +7,7 @@
 # https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt2/modeling_gpt2.py
 # https://github.com/tinygrad/tinygrad/blob/master/examples/gpt2.py
 
-from typing import Optional, List, Set
+from typing import Mapping, Optional, List, Set, Any
 from dataclasses import dataclass
 import math
 from tqdm import tqdm
@@ -36,8 +36,7 @@ class CausalSelfAttention(nn.Module):
     self.n_head, self.n_embd, self.head_size = config.n_head, config.n_embd, config.n_embd // config.n_head
     self.c_attn = Linear(config.n_embd, 3 * config.n_embd)
     self.c_proj = Linear(config.n_embd, config.n_embd)
-    # need to register as buffer so that to(device) works (consequently shows up in state_dict)
-    self.register_buffer('bias', torch.tril(torch.ones(1, 1, config.block_size, config.block_size)))
+    self.bias = torch.tril(torch.ones(1, 1, config.block_size, config.block_size))
 
   def forward(self, x: Tensor):
     B, T, C= x.size()
@@ -46,12 +45,20 @@ class CausalSelfAttention(nn.Module):
     q = q.view(B, T, self.n_head, self.head_size).transpose(1, 2) # (B, H, T, C')
     k = k.view(B, T, self.n_head, self.head_size).transpose(1, 2) # (B, H, T, C')
     v = v.view(B, T, self.n_head, self.head_size).transpose(1, 2) # (B, H, T, C')
-    att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(self.head_size)) # (B, H, T, T)
-    att = att.masked_fill(self.bias[:,:,:T,:T] < 0.5, -float('inf')) # causal mask
-    y = F.softmax(att, dim=-1) @ v # (B, H, T, T) x (B, H, T, C') -> (B, H, T, C')
-    # y = F.scaled_dot_product_attention(q, k, v, att_mask=mask, is_causal=True) # flash attention
+    y = self._attention(q, k, v, self.bias[:,:,:T,:T], (1.0 / math.sqrt(self.head_size))) # (B, H, T, C')
     y = y.transpose(1, 2).contiguous().view(B, T, C)
     y = self.c_proj(y)
+    return y
+
+  @staticmethod
+  def _attention(q: Tensor, k: Tensor, v: Tensor, mask: Tensor, scale: float, use_fused: bool=True) -> Tensor:
+    mask = mask.to(q.device)
+    if use_fused:
+      y = F.scaled_dot_product_attention(q, k, v, mask > 0.5, scale=scale) # flash attention
+      return y
+    att = (q @ k.transpose(-2, -1)) * scale # (B, H, T, T)
+    att = att.masked_fill(mask < 0.5, -float('inf')) # causal mask
+    y = F.softmax(att, dim=-1) @ v # (B, H, T, T) x (B, H, T, C') -> (B, H, T, C')
     return y
 
 
@@ -153,19 +160,20 @@ class GPT2:
     }[model_type]
     model = Transformer(GPTConfig(**config_args))
     transposed = {'attn.c_attn.weight', 'attn.c_proj.weight', 'mlp.c_fc.weight', 'mlp.c_proj.weight'}
-    if assign: model = GPT2._load_from_cache(model, model_type, transposed=transposed)
-    else: model = GPT2._copy_from_hf(model, model_type, half=half, transposed=transposed)
+    skip = {'.attn.masked_bias', '.attn.bias'}
+    if assign: model = GPT2._load_from_cache(model, model_type, transposed, skip)
+    else: model = GPT2._copy_from_hf(model, model_type, half, transposed, skip)
     if half: model = model.half()
     return GPT2(model.apply_weight_sharing(), Tokenizer())
 
   @staticmethod
-  def _copy_from_hf(model: Transformer, checkpoint: str, half: bool=False, transposed: Set[str]={}):
+  def _copy_from_hf(model: Transformer, checkpoint: str, half: bool=False, transposed: Set[str]={}, skip: Set[str]={}):
     from transformers import GPT2LMHeadModel
     model_hf = GPT2LMHeadModel.from_pretrained(checkpoint)
     if half: model, model_hf = model.half(), model_hf.half()
     sd, sd_hf = model.state_dict(), model_hf.state_dict()
-    sd_keys = [k for k in sd.keys() if not k.endswith('.attn.bias')]
-    sd_keys_hf = [k for k in sd_hf.keys() if not any(k.endswith(w) for w in ('.attn.masked_bias', '.attn.bias'))]
+    sd_keys = [k for k in sd.keys() if not any(k.endswith(w) for w in skip)]
+    sd_keys_hf = [k for k in sd_hf.keys() if not any(k.endswith(w) for w in skip)]
     # copy while ensuring all of the parameters are aligned and match in names and shapes
     assert len(sd_keys_hf) == len(sd_keys), f"mismatched keys: {len(sd_keys_hf)} != {len(sd_keys)}"
     for k in tqdm(sd_keys_hf, desc=f'Loading pretrained weights'):
@@ -178,14 +186,14 @@ class GPT2:
     return model
 
   @staticmethod
-  def _load_from_cache(model: Transformer, checkpoint: str, transposed: Set[str]={}):
+  def _load_from_cache(model: Transformer, checkpoint: str, transposed: Set[str]={}, skip: Set[str]={}):
     from transformers.utils import try_to_load_from_cache
     import safetensors.torch
     safetensors_model_file = try_to_load_from_cache(repo_id=checkpoint, filename="model.safetensors")
-    loaded = safetensors.torch.load_file(str(safetensors_model_file))
-    for k, v in loaded.items():
-      if any(k.endswith(w) for w in transposed):
-        loaded[k] = v.t()
+    loaded = dict()
+    for k, v in safetensors.torch.load_file(str(safetensors_model_file)).items():
+      if any(k.endswith(w) for w in skip): continue
+      loaded[k] = v.t() if any(k.endswith(w) for w in transposed) else v
     model.transformer.load_state_dict(loaded, assign=True, strict=True)
     return model
 
