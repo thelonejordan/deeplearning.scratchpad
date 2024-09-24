@@ -18,7 +18,8 @@ import torch.nn.functional as F
 
 from llama import Tokenizer, RMSNorm, apply_rotary_emb
 
-torch.set_default_dtype(torch.float16)
+DEFAULT_FLOAT = torch.bfloat16
+torch.set_default_dtype(DEFAULT_FLOAT)
 
 @dataclass
 class MistralConfig:
@@ -77,8 +78,8 @@ class Attention(nn.Module):
     self.wv = nn.Linear(config.dim, config.n_kv_heads * config.head_dim, bias=False)
     self.wo = nn.Linear(config.n_heads * config.head_dim, config.dim, bias=False)
     cache_size = (config.max_batch_size, config.max_seq_len, self.n_kv_heads, self.head_dim)
-    self.cache_k = torch.empty(cache_size, dtype=torch.float16)
-    self.cache_v = torch.empty(cache_size, dtype=torch.float16)
+    self.cache_k = torch.zeros(cache_size, dtype=DEFAULT_FLOAT)
+    self.cache_v = torch.zeros(cache_size, dtype=DEFAULT_FLOAT)
 
   def forward(self, x: Tensor, freqs_cis: Tensor, positions: Tensor, mask: Optional[Tensor]) -> Tensor:
     bsz, seqlen, _ = x.shape
@@ -177,6 +178,8 @@ class Mistral:
 
   @property
   def device(self) -> torch.device: return next(self.model.parameters()).device
+  @property
+  def dtype(self) -> torch.dtype: return next(self.model.parameters()).dtype
 
   def to(self, device: torch.device):
     self.model = self.model.to(device)
@@ -184,13 +187,15 @@ class Mistral:
 
   @staticmethod
   @timeit(desc="Load time", ms=False)
-  def from_pretrained(folder: str, max_batch_size: int = 1, device="cpu", dtype=torch.float16):
-    model = Mistral.load_model(Path(folder), max_batch_size, device, dtype)
+  def from_pretrained(folder: str, max_batch_size: int=1, device: Optional[torch.device]=None, dtype: Optional[torch.dtype]=None):
+    device = torch.device('cpu') if device is None else device
+    dtype = DEFAULT_FLOAT if dtype is None else dtype
+    model = Mistral.load_model(Path(folder), device, dtype, max_batch_size)
     tokenizer = Mistral.load_tokenizer(Path(folder))
     return Mistral(model, tokenizer)
 
   @staticmethod
-  def load_model(folder: Path, max_batch_size: int = 1, device="cpu", dtype=torch.float16):
+  def load_model(folder: Path, device: torch.device, dtype: torch.dtype, max_batch_size: int=1):
     with open(Path(folder) / "params.json", "r") as f:
       config = MistralConfig(**json.load(f))
     config.max_batch_size = max_batch_size
@@ -259,7 +264,7 @@ if __name__ == "__main__":
   set_seed(device)
 
   model_path = "downloads/mistral-7B-v0.1"
-  model = Mistral.from_pretrained(model_path, max_batch_size=3, device=device, dtype=torch.bfloat16)
+  model = Mistral.from_pretrained(model_path, max_batch_size=3, device=device)
 
   max_tokens: int = 35
   context = [
