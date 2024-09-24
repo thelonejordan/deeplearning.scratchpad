@@ -5,7 +5,7 @@
 # https://github.com/meta-llama/llama/blob/llama_v1/llama/model.py (57b0eb62de0636e75af471e49e2f1862d908d9d8)
 # https://github.com/tinygrad/tinygrad/blob/master/extra/models/llama.py
 
-from typing import Optional, Tuple, List, Set
+from typing import Optional, Tuple, List
 from dataclasses import dataclass
 import os, math
 from tqdm import tqdm
@@ -187,11 +187,15 @@ class Tokenizer:
     self.sp_model = SentencePieceProcessor(model_file=model_path)
     print(f"Reloaded SentencePiece model from {model_path}")
     self.n_words: int = self.sp_model.vocab_size()
-    self.bos_id: int = self.sp_model.bos_id()
-    self.eos_id: int = self.sp_model.eos_id()
-    self.pad_id: int = self.sp_model.pad_id()
     print(f"#words: {self.n_words} - BOS ID: {self.bos_id} - EOS ID: {self.eos_id}")
     assert self.sp_model.vocab_size() == self.sp_model.get_piece_size()
+
+  @property
+  def bos_id(self) -> int: return self.sp_model.bos_id()
+  @property
+  def eos_id(self) -> int: return self.sp_model.eos_id()
+  @property
+  def pad_id(self) -> int: return self.sp_model.pad_id()
 
   def encode(self, s: str, bos: bool, eos: bool) -> List[int]:
     assert type(s) is str
