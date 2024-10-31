@@ -35,6 +35,31 @@ def _load_from_cache(model: Transformer, checkpoint: str, transposed: Set[str]=s
   model.transformer.load_state_dict(loaded, assign=True, strict=True)
   return model
 
+def _safetensors_load(model: Transformer, checkpoint: str, transposed: Set[str]=set(), skip: Set[str]=set()):
+  from huggingface_hub import snapshot_download
+  import safetensors.torch
+  folder = f"downloads/{checkpoint}"
+  snapshot_download(checkpoint, local_dir=folder, allow_patterns="model.safetensors")
+  safetensors_model_file = f"{folder}/model.safetensors"
+  loaded = dict()
+  for k, v in safetensors.torch.load_file(str(safetensors_model_file)).items():
+    if any(k.endswith(w) for w in skip): continue
+    loaded[k] = v.t() if any(k.endswith(w) for w in transposed) else v
+  model.transformer.load_state_dict(loaded, assign=True, strict=True)
+  return model
+
+def _torch_load(model: Transformer, checkpoint: str, transposed: Set[str]=set(), skip: Set[str]=set()):
+  from huggingface_hub import snapshot_download
+  folder = f"downloads/{checkpoint}"
+  snapshot_download(checkpoint, local_dir=folder, allow_patterns="pytorch_model.bin")
+  pytorch_model_file = f"{folder}/pytorch_model.bin"
+  loaded = dict()
+  for k, v in torch.load(pytorch_model_file, weights_only=True).items():
+    if any(k.endswith(w) for w in skip): continue
+    loaded[k] = v.t() if any(k.endswith(w) for w in transposed) else v
+  model.transformer.load_state_dict(loaded, assign=True, strict=True)
+  return model
+
 @timeit(desc="Load time", ms=False)
 def from_pretrained(model_type: str='gpt2', half: bool=False, assign: bool=False):
   config_args = {
@@ -46,7 +71,7 @@ def from_pretrained(model_type: str='gpt2', half: bool=False, assign: bool=False
   model = Transformer(GPTConfig(**config_args))
   transposed = {'attn.c_attn.weight', 'attn.c_proj.weight', 'mlp.c_fc.weight', 'mlp.c_proj.weight'}
   skip = {'.attn.masked_bias', '.attn.bias'}
-  if assign: model = _load_from_cache(model, model_type, transposed, skip)
+  if assign: model = _safetensors_load(model, model_type, transposed, skip)
   else: model = _copy_from_hf(model, model_type, half, transposed, skip)
   if half: model = model.half()
   return model.apply_weight_sharing(), Tokenizer()
