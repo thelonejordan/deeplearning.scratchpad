@@ -33,6 +33,19 @@ def _load_from_cache(model: Transformer, checkpoint: str):
   tokenizer = Tokenizer(tokenizer_path)
   return model, tokenizer
 
+def _safetensor_load(model: Transformer, checkpoint: str):
+  from huggingface_hub import snapshot_download
+  import safetensors.torch
+  filenames=["model-00001-of-00002.safetensors", "model-00002-of-00002.safetensors"]
+  base = snapshot_download(checkpoint, allow_patterns=filenames)
+  loaded = {}
+  for file in filenames: loaded.update(safetensors.torch.load_file(f"{base}/{file}"))
+  loaded = {k:v for k, v in loaded.items() if not k.endswith("freq")}
+  model.load_state_dict(loaded, assign=True, strict=True)
+  base = snapshot_download(checkpoint, allow_patterns="tokenizer.model")
+  tokenizer = Tokenizer(f"{base}/tokenizer.model")
+  return model, tokenizer
+
 @timeit(desc="Load time", ms=False)
 def from_pretrained(model_type: str='7B', half=False, assign: bool=False):
   assert model_type in ('7B', '13B', '30B', '65B'), f'invalid model_type: {model_type}'
@@ -45,7 +58,7 @@ def from_pretrained(model_type: str='7B', half=False, assign: bool=False):
   config = LlamaConfig(**config_args)
   model = Transformer(config)
   checkpoint = f'huggyllama/llama-{model_type.lower()}'
-  if assign: model, tokenizer = _load_from_cache(model, checkpoint)
+  if assign: model, tokenizer = _safetensor_load(model, checkpoint)
   else: model, tokenizer = _copy_from_hf(model, checkpoint, half)
   if half: model = model.half()
   return model, tokenizer
