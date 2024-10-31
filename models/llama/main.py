@@ -6,8 +6,6 @@
 # https://github.com/tinygrad/tinygrad/blob/master/extra/models/llama.py
 
 from typing import List
-from tqdm import tqdm
-from models.helpers import timeit
 
 import torch
 from models.llama.tokenizer import Tokenizer

@@ -33,7 +33,7 @@ def _load_from_cache(model: Transformer, checkpoint: str):
   tokenizer = Tokenizer(tokenizer_path)
   return model, tokenizer
 
-def _safetensor_load(model: Transformer, checkpoint: str):
+def _safetensors_load(model: Transformer, checkpoint: str):
   from huggingface_hub import snapshot_download
   import safetensors.torch
   filenames=["model-00001-of-00002.safetensors", "model-00002-of-00002.safetensors"]
@@ -58,7 +58,7 @@ def from_pretrained(model_type: str='7B', half=False, assign: bool=False):
   config = LlamaConfig(**config_args)
   model = Transformer(config)
   checkpoint = f'huggyllama/llama-{model_type.lower()}'
-  if assign: model, tokenizer = _safetensor_load(model, checkpoint)
+  if assign: model, tokenizer = _safetensors_load(model, checkpoint)
   else: model, tokenizer = _copy_from_hf(model, checkpoint, half)
   if half: model = model.half()
   return model, tokenizer
