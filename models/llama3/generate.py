@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Optional, TypedDict, List, Tuple
+from typing import Optional, List, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -7,6 +7,7 @@ from models.llama3.tokenizer import Tokenizer
 from models.llama3.transformer import Transformer
 from models.llama3.load import build
 from models.llama.generate import sample_top_p
+from models.llama2.generate import CompletionPrediction
 
 
 class Llama:
@@ -134,12 +135,6 @@ def generate(generator: Llama, prompt_tokens: List[List[int]], max_gen_len: int,
     out_tokens.append(toks)
     out_logprobs.append(probs)
   return (out_tokens, out_logprobs if logprobs else None)
-
-
-class CompletionPrediction(TypedDict, total=False):
-  generation: str
-  tokens: List[str]  # not required
-  logprobs: List[float]  # not required
 
 
 def text_completion(generator: Llama, prompts: List[str], temperature: float=0.6, top_p: float=0.9,

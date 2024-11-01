@@ -25,11 +25,12 @@ def main():
     "If Google was an Italian company founded in Milan, it would",
   ]
 
-  out_tokens, out_texts = model.text_completion(prompts, max_gen_len=64)
-  assert len(out_texts) == len(prompts)
+  out = model.text_completion(prompts, max_gen_len=64, echo=True)
+  assert len(out) == len(prompts)
   print('-' * 50)
-  for i in range(len(out_texts)):
-    print(f'{out_texts[i]}')
+  for i in range(len(out)):
+    text = out[i]['generation']
+    print(f'{text}')
     print('-' * 50)
 
 

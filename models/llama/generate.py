@@ -1,6 +1,7 @@
 from typing import List
 from tqdm import tqdm
 import torch
+from torch import Tensor
 from models.llama.transformer import Transformer
 from models.llama.tokenizer import Tokenizer
 from models.llama.load import build
@@ -63,7 +64,22 @@ def generate(generator: Llama, prompts: List[str],
     decoded.append(tokenizer.decode(t))
   return decoded
 
-def sample_top_p(probs, p):
+
+def sample_top_p(probs: Tensor, p: float) -> Tensor:
+  """
+    Perform top-p (nucleus) sampling on a probability distribution.
+
+    Args:
+      probs (torch.Tensor): Probability distribution tensor.
+      p (float): Probability threshold for top-p sampling.
+
+    Returns:
+      torch.Tensor: Sampled token indices.
+
+    Note:
+      Top-p sampling selects the smallest set of tokens whose cumulative probability mass
+      exceeds the threshold p. The distribution is renormalized based on the selected tokens.
+  """
   probs_sort, probs_idx = torch.sort(probs, dim=-1, descending=True)
   probs_sum = torch.cumsum(probs_sort, dim=-1)
   mask = probs_sum - probs_sort > p
