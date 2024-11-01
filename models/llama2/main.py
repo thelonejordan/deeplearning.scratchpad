@@ -10,39 +10,11 @@
 # https://ai.meta.com/blog/large-language-model-llama-meta-ai/
 # https://ai.meta.com/blog/5-steps-to-getting-started-with-llama-2/
 
-from __future__ import annotations
-from typing import Optional
+from models.helpers import set_device, set_seed
+from models.llama2.generate import Llama
 
-import torch
-from models.llama.tokenizer import Tokenizer
-from models.llama2.transformer import Transformer
-from models.llama2.load import build
-from models.llama2.generate import text_completion
+def main():
 
-class Llama:
-  def __init__(self, model: Transformer, tokenizer: Tokenizer):
-    self.model = model
-    self.tokenizer = tokenizer
-
-  @property
-  def device(self) -> torch.device: return next(self.model.parameters()).device
-
-  def to(self, device: torch.device):
-    self.model = self.model.to(device)
-    return self
-
-  @staticmethod
-  def from_pretrained(max_seq_len: int=512, max_batch_size: int=8, model_desc: str='7B', chat: bool=False) -> Llama:
-    model, tokenizer = build(max_seq_len, max_batch_size, model_desc, chat)
-    return Llama(model, tokenizer)
-
-  @torch.inference_mode
-  def text_completion(self, prompts: list[str], temperature: float = 0.6, top_p: float = 0.9, max_gen_len: Optional[int] = None):
-    return text_completion(self.model, self.tokenizer, self.device, prompts, temperature, top_p, max_gen_len)
-
-
-if __name__ == "__main__":
-  from models.helpers import set_device, set_seed
   device = set_device('cpu') # hardcode, as MPS OOMs
   set_seed(device)
 
@@ -59,3 +31,7 @@ if __name__ == "__main__":
   for i in range(len(out_texts)):
     print(f'{out_texts[i]}')
     print('-' * 50)
+
+
+if __name__ == "__main__":
+  main()

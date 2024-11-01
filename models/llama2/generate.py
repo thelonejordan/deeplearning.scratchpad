@@ -1,15 +1,40 @@
-from typing import Optional
+from __future__ import annotations
+from typing import Optional, List
 from tqdm import tqdm
 
 import torch
 from models.llama.tokenizer import Tokenizer
-from models.llama.generate import sample_top_p
 from models.llama2.transformer import Transformer
+from models.llama2.load import build
+from models.llama.generate import sample_top_p
+
+
+class Llama:
+  def __init__(self, model: Transformer, tokenizer: Tokenizer):
+    self.model = model
+    self.tokenizer = tokenizer
+
+  @property
+  def device(self) -> torch.device: return next(self.model.parameters()).device
+
+  def to(self, device: torch.device):
+    self.model = self.model.to(device)
+    return self
+
+  @staticmethod
+  def from_pretrained(max_seq_len: int=512, max_batch_size: int=8, model_desc: str='7B', chat: bool=False) -> Llama:
+    model, tokenizer = build(max_seq_len, max_batch_size, model_desc, chat)
+    return Llama(model, tokenizer)
+
+  def text_completion(self, prompts: list[str], temperature: float=0.6, top_p: float=0.9, max_gen_len: Optional[int]=None):
+    return text_completion(self, prompts, temperature, top_p, max_gen_len)
+
 
 @torch.inference_mode
-def text_completion(model: Transformer, tokenizer: Tokenizer, device: torch.device,
-                    prompts: list[str], temperature: float = 0.6, top_p: float = 0.9, max_gen_len: Optional[int] = None):
-  args = model.config
+def text_completion(generator: Llama, prompts: List[str], temperature: float=0.6,
+                    top_p: float=0.9, max_gen_len: Optional[int]=None):
+  model, tokenizer = generator.model, generator.tokenizer
+  args, device = model.config, generator.device
   if max_gen_len is None:
     max_gen_len = args.max_seq_len - 1
   prompt_tokens = [tokenizer.encode(prompt, bos=True, eos=False) for prompt in prompts]
