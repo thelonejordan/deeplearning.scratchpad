@@ -10,14 +10,13 @@
 # https://ai.meta.com/blog/large-language-model-llama-meta-ai/
 # https://ai.meta.com/blog/5-steps-to-getting-started-with-llama-2/
 
+from __future__ import annotations
 from typing import Optional
-from tqdm import tqdm
 
 import torch
 from models.llama.tokenizer import Tokenizer
-from models.llama.generate import sample_top_p
 from models.llama2.transformer import Transformer
-from models.llama2.load import from_pretrained
+from models.llama2.load import build
 from models.llama2.generate import text_completion
 
 class Llama:
@@ -33,8 +32,8 @@ class Llama:
     return self
 
   @staticmethod
-  def from_pretrained(model_type: str='7B', chat: bool=False, half=False, assign: bool=False):
-    model, tokenizer = from_pretrained(model_type, chat, half, assign)
+  def from_pretrained(max_seq_len: int=2048, max_batch_size: int=32, model_desc: str='7B', chat: bool=False) -> Llama:
+    model, tokenizer = build(max_seq_len, max_batch_size, model_desc, chat)
     return Llama(model, tokenizer)
 
   @torch.inference_mode
@@ -47,7 +46,7 @@ if __name__ == "__main__":
   device = set_device('cpu') # hardcode, as MPS OOMs
   set_seed(device)
 
-  model = Llama.from_pretrained('7B', assign=True).to(device)
+  model = Llama.from_pretrained(max_batch_size=2).to(device)
 
   prompts = [
     "Simply put, the theory of relativity states that",

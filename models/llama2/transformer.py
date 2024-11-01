@@ -1,43 +1,13 @@
 from typing import Optional
-from dataclasses import dataclass
 import math
 
 import torch
 from torch import Tensor, nn
 from torch.nn import functional as F
 
+from models.llama2.config import LlamaConfig
 from models.llama.transformer import precompute_freqs_cis, apply_rotary_emb
 from models.llama.transformer import RMSNorm, FeedForward
-
-@dataclass
-class LlamaConfig:
-  dim: int = 4096
-  n_layers: int = 32
-  n_heads: int = 32
-  n_kv_heads: Optional[int] = None
-  vocab_size: int = 32000
-  max_seq_len: int = 2048
-  multiple_of: int = 256
-  ffn_dim_multiplier: Optional[int] = None
-  norm_eps: float = 1e-5
-  max_batch_size: int = 32
-  # for post init
-  head_dim: Optional[int] = None
-  hidden_dim: Optional[int] = None
-
-  def __post_init__(self):
-    assert self.head_dim is None and self.dim % self.n_heads == 0
-    self.head_dim = self.dim // self.n_heads
-    assert self.hidden_dim is None
-    self.hidden_dim = compute_hidden_dim(self.dim, self.multiple_of, self.ffn_dim_multiplier)
-    if self.n_kv_heads is None: self.n_kv_heads = self.n_heads
-
-# https://github.com/meta-llama/llama/blob/7565eb6fee2175b2d4fe2cfb45067a61b35d7f5e/llama/model.py#L331
-def compute_hidden_dim(dim: int, multiple_of: int, ffn_dim_multiplier: Optional[float]=None):
-  hidden_dim = int(2 * (4 * dim) / 3)
-  if ffn_dim_multiplier is not None: hidden_dim = int(ffn_dim_multiplier * hidden_dim) # custom dim factor multiplier
-  hidden_dim = multiple_of * ((hidden_dim + multiple_of - 1) // multiple_of)
-  return hidden_dim
 
 # n_rep > 1 aka n_kv_heads != n_heads implies MQA [arxiv/2307.09288, A.2.1]
 def repeat_kv(x: torch.Tensor, n_rep: int) -> Tensor:
@@ -99,11 +69,10 @@ class Attention(nn.Module):
 class TransformerBlock(nn.Module):
   def __init__(self, config: LlamaConfig):
     super().__init__()
-    hidden_dim = compute_hidden_dim(config.dim, config.multiple_of, config.ffn_dim_multiplier)
     self.input_layernorm = RMSNorm(config.dim, eps=config.norm_eps)
     self.self_attn = Attention(config)
     self.post_attention_layernorm = RMSNorm(config.dim, eps=config.norm_eps)
-    self.mlp = FeedForward(config.dim, hidden_dim)
+    self.mlp = FeedForward(config.dim, config.hidden_dim)
 
   def forward(self, x: Tensor, start_pos: int, freqs_cis: Tensor, mask: Optional[Tensor]):
     h = x + self.self_attn(self.input_layernorm(x), start_pos, freqs_cis, mask)

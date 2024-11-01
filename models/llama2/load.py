@@ -1,63 +1,38 @@
-from tqdm import tqdm
+from pathlib import Path
+from huggingface_hub import snapshot_download
+import safetensors.torch
 import torch
 from models.helpers import timeit
 from models.llama.tokenizer import Tokenizer
 from models.llama2.transformer import Transformer, LlamaConfig
 
-def _copy_from_hf(model, checkpoint: str, half=False):
-  from transformers import LlamaTokenizer, LlamaForCausalLM
-  tokenizer = Tokenizer(LlamaTokenizer.from_pretrained(checkpoint).vocab_file)
-  model_hf = LlamaForCausalLM.from_pretrained(checkpoint)
-  if half: model, model_hf = model.half(), model_hf.half()
-  sd, sd_hf = model.state_dict(), model_hf.state_dict()
-  sd_keys, sd_keys_hf = list(sd.keys()), list(sd_hf.keys())
-  assert len(sd_keys_hf) == len(sd_keys), f"mismatched keys: {len(sd_keys_hf)} != {len(sd_keys)}"
-  itr = tqdm(sd_keys_hf)
-  for k in itr:
-    itr.set_description(f'Loading {k}')
-    assert sd_hf[k].shape == sd[k].shape, f'{k} not found'
-    with torch.no_grad(): sd[k].copy_(sd_hf[k])
-    del sd_hf[k] # free memory after copying
-  return model, tokenizer
-
-def _load_from_cache(model: Transformer, checkpoint: str):
-  from transformers.utils import try_to_load_from_cache
-  import safetensors.torch
-  filenames=["model-00001-of-00002.safetensors", "model-00002-of-00002.safetensors"]
-  model_files = [try_to_load_from_cache(repo_id=checkpoint, filename=filename) for filename in filenames]
-  loaded = dict()
-  for file in model_files: loaded.update(safetensors.torch.load_file(str(file)))
-  loaded = {k:v for k, v in loaded.items() if not k.endswith("freq")}
-  model.load_state_dict(loaded, assign=True, strict=True)
-  tokenizer_path = try_to_load_from_cache(repo_id=checkpoint, filename="tokenizer.model")
-  tokenizer = Tokenizer(tokenizer_path)
-  return model, tokenizer
-
-def _safetensors_load(model: Transformer, checkpoint: str):
-  from huggingface_hub import snapshot_download
-  import safetensors.torch
-  filenames=["model-00001-of-00002.safetensors", "model-00002-of-00002.safetensors"]
-  base = snapshot_download(checkpoint, allow_patterns=filenames)
-  loaded = {}
-  for file in filenames: loaded.update(safetensors.torch.load_file(f"{base}/{file}"))
-  loaded = {k:v for k, v in loaded.items() if not k.endswith("freq")}
-  model.load_state_dict(loaded, assign=True, strict=True)
-  base = snapshot_download(checkpoint, allow_patterns="tokenizer.model")
-  tokenizer = Tokenizer(f"{base}/tokenizer.model")
-  return model, tokenizer
+def _safetensors_load(checkpoint: str):
+  ckpt_dir = snapshot_download(checkpoint, allow_patterns="*.safetensors")
+  checkpoints = sorted(Path(ckpt_dir).glob("*.safetensors"))
+  state_dict = {}
+  for ckpt in checkpoints:
+    state_dict.update(safetensors.torch.load_file(ckpt))
+  state_dict = {k:v for k, v in state_dict.items() if not k.endswith("freq")}
+  ckpt_dir = snapshot_download(checkpoint, allow_patterns="tokenizer.model")
+  tokenizer_path = f"{ckpt_dir}/tokenizer.model"
+  return state_dict, tokenizer_path
 
 @timeit(desc="Load time", ms=False)
-def from_pretrained(model_type: str='7B', chat: bool=False, half=False, assign: bool=False):
-  assert model_type in ('7B', '13B', '70B'), f'invalid model_type: {model_type}'
-  config_args = {
-    '7B' : dict(dim=4096, n_heads=32, n_layers=32),
-    '13B': dict(dim=5120, n_heads=40, n_layers=40),
-    '70B': dict(dim=8192, n_heads=64, n_kv_heads=8, n_layers=80),
-  }[model_type]
-  config = LlamaConfig(**config_args)
+def build(max_seq_len: int, max_batch_size: int, model_desc: str='7B', chat: bool=False, safetensors: bool=True):
+  # TODO: support safetensors=False
+  assert model_desc in ('7B', '13B', '70B'), f'invalid model_type: {model_desc}'
+  params = {
+    '7B' : dict(dim=4096, n_heads=32, n_layers=32, multiple_of=256, norm_eps=1e-05),
+    '13B': dict(dim=5120, n_heads=40, n_layers=40, multiple_of=256, norm_eps=1e-05),
+    '70B': dict(dim=8192, n_heads=64, n_kv_heads=8, n_layers=80, multiple_of=4096, ffn_dim_multiplier=1.3, norm_eps=1e-05),
+  }[model_desc]
+  repo_id = f'meta-llama/Llama-2-{model_desc.lower()}'
+  repo_id += ('-chat' if chat else '') + ('-hf' if safetensors else '')
+  state_dict, tokenizer_path = _safetensors_load(repo_id)
+  tokenizer = Tokenizer(tokenizer_path)
+  params['vocab_size'] = tokenizer.n_words
+  config = LlamaConfig.build(max_seq_len, max_batch_size, **params)
+  torch.set_default_dtype(config.torch_dtype)
   model = Transformer(config)
-  checkpoint = f'meta-llama/Llama-2-{model_type.lower()}' + ('-chat-hf' if chat else '-hf')
-  if assign: model, tokenizer = _safetensors_load(model, checkpoint)
-  else: model, tokenizer = _copy_from_hf(model, checkpoint, half)
-  if half: model = model.half()
+  model.load_state_dict(state_dict, assign=True, strict=True)
   return model, tokenizer
