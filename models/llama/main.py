@@ -10,7 +10,7 @@ from typing import List
 import torch
 from models.llama.tokenizer import Tokenizer
 from models.llama.transformer import Transformer
-from models.llama.load import from_pretrained
+from models.llama.load import build
 from models.llama.generate import generate
 
 class Llama:
@@ -26,8 +26,8 @@ class Llama:
     return self
 
   @staticmethod
-  def from_pretrained(model_type: str='7B', half=False, assign: bool=False):
-    model, tokenizer = from_pretrained(model_type, half, assign)
+  def from_pretrained(max_seq_len: int=512, max_batch_size: int=8, model_desc: str='7B'):
+    model, tokenizer = build(max_seq_len, max_batch_size, model_desc)
     return Llama(model, tokenizer)
 
   def generate(self, prompts: List[str], max_gen_len: int, temperature: float=0.8, top_p: float=0.95) -> List[str]:
@@ -39,7 +39,7 @@ if __name__ == "__main__":
   device = set_device('cpu') # hardcode, as MPS OOMs
   set_seed(device)
 
-  model = Llama.from_pretrained('7B', assign=True).to(device)
+  model = Llama.from_pretrained(max_batch_size=4).to(device)
 
   num_return_sequences = 4
   max_gen_len = 32

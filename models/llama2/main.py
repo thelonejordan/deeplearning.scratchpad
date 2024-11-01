@@ -32,7 +32,7 @@ class Llama:
     return self
 
   @staticmethod
-  def from_pretrained(max_seq_len: int=2048, max_batch_size: int=32, model_desc: str='7B', chat: bool=False) -> Llama:
+  def from_pretrained(max_seq_len: int=512, max_batch_size: int=8, model_desc: str='7B', chat: bool=False) -> Llama:
     model, tokenizer = build(max_seq_len, max_batch_size, model_desc, chat)
     return Llama(model, tokenizer)
 

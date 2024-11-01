@@ -4,16 +4,17 @@ import safetensors.torch
 import torch
 from models.helpers import timeit
 from models.llama.tokenizer import Tokenizer
-from models.llama2.transformer import Transformer, LlamaConfig
+from models.llama2.transformer import Transformer
+from models.llama2.config import LlamaConfig
 
-def _safetensors_load(checkpoint: str):
-  ckpt_dir = snapshot_download(checkpoint, allow_patterns="*.safetensors")
+def _safetensors_load(repo_id: str):
+  ckpt_dir = snapshot_download(repo_id, allow_patterns="*.safetensors")
   checkpoints = sorted(Path(ckpt_dir).glob("*.safetensors"))
   state_dict = {}
   for ckpt in checkpoints:
     state_dict.update(safetensors.torch.load_file(ckpt))
   state_dict = {k:v for k, v in state_dict.items() if not k.endswith("freq")}
-  ckpt_dir = snapshot_download(checkpoint, allow_patterns="tokenizer.model")
+  ckpt_dir = snapshot_download(repo_id, allow_patterns="tokenizer.model")
   tokenizer_path = f"{ckpt_dir}/tokenizer.model"
   return state_dict, tokenizer_path
 
