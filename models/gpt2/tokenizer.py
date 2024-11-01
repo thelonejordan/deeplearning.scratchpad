@@ -13,5 +13,5 @@ class Tokenizer:
     batch = [input] if isinstance(input, str) else input
     return torch.tensor(self.model.encode_batch(batch), dtype=torch.long, device=device)
 
-  def decode_batch(self, idx: Tensor):
-    return self.model.decode_batch(idx.tolist())
+  def decode_batch(self, idx: List[List[int]]):
+    return self.model.decode_batch(idx)

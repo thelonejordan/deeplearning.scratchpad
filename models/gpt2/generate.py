@@ -1,14 +1,44 @@
 from typing import Optional, List
+
 import torch
-import torch.nn.functional as F
+from torch.nn import functional as F
+from models.gpt2.load import from_pretrained
 
 from models.gpt2.tokenizer import Tokenizer
 from models.gpt2.transformer import Transformer
 
+
+class GPT2:
+  def __init__(self, model: Transformer, tokenizer: Tokenizer):
+    self.model = model
+    self.tokenizer = tokenizer
+
+  @property
+  def device(self) -> torch.device: return next(self.model.parameters()).device
+
+  def to(self, device: torch.device):
+    self.model = self.model.to(device)
+    return self
+
+  @staticmethod
+  def from_pretrained(model_desc: str='gpt2'):
+    model, tokenizer = from_pretrained(model_desc)
+    return GPT2(model, tokenizer)
+
+  def generate(self, prompt: str, max_new_tokens: int, num_return_sequences: int=1,
+               temperature: float=1.0, top_k: Optional[int]=None):
+    return generate(self, prompt, max_new_tokens, num_return_sequences, temperature, top_k)
+
+  def completion(self, prompts: str | List[str], max_new_tokens: int,
+                 temperature: float=1.0, top_k: Optional[int]=None):
+    return completion(self, prompts, max_new_tokens, temperature, top_k)
+
+
 @torch.inference_mode()
-def generate(model: Transformer, tokenizer: Tokenizer, device: torch.device,  prompt: str, max_new_tokens: int,
+def generate(generator: GPT2, prompt: str, max_new_tokens: int,
              num_return_sequences: int=1, temperature: float=1.0, top_k: Optional[int]=None):
-  config = model.config
+  model, tokenizer = generator.model, generator.tokenizer
+  config, device = model.config, generator.device
   idx = tokenizer.encode_batch(prompt, device=device)
   assert idx.size(0) == 1 and num_return_sequences >= 1 and temperature > 0.0
   idx = idx.repeat(num_return_sequences, 1)
@@ -24,12 +54,13 @@ def generate(model: Transformer, tokenizer: Tokenizer, device: torch.device,  pr
     probs = F.softmax(logits, dim=-1)
     idx_next = torch.multinomial(probs[:, -1, :], num_samples=1)
     idx = torch.cat((idx, idx_next), dim=-1)
-  return tokenizer.decode_batch(idx)
+  return tokenizer.decode_batch(idx.tolist())
 
 @torch.inference_mode()
-def completion(model: Transformer, tokenizer: Tokenizer, device: torch.device, prompts: str | List[str],
+def completion(generator: GPT2, prompts: str | List[str],
                max_new_tokens: int, temperature: float=1.0, top_k: Optional[int]=None):
-  config = model.config
+  model, tokenizer = generator.model, generator.tokenizer
+  config, device = model.config, generator.device
   idxs, masks = [], []
   start_pos = max_new_tokens
   for i in range(len(prompts)):
@@ -58,4 +89,4 @@ def completion(model: Transformer, tokenizer: Tokenizer, device: torch.device, p
     idx_next = torch.multinomial(probs[:, -1, :], num_samples=1)
     idx[:,[cur_pos]] = torch.where(mask[:, [cur_pos]]>0.5, idx[:,[cur_pos]], idx_next)
     cur_pos += 1
-  return tokenizer.decode_batch(idx)
+  return tokenizer.decode_batch(idx.tolist())

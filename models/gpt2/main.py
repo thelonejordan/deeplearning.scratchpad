@@ -7,47 +7,12 @@
 # https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt2/modeling_gpt2.py
 # https://github.com/tinygrad/tinygrad/blob/master/examples/gpt2.py
 
-from typing import Optional, List
 
-import torch
-from torch.nn import functional as F
-from models.gpt2.load import from_pretrained
+from models.helpers import set_device, set_seed
+from models.gpt2.generate import GPT2
 
-from models.gpt2.tokenizer import Tokenizer
-from models.gpt2.transformer import Transformer
-from models.gpt2.generate import generate, completion
+def main():
 
-class GPT2:
-  def __init__(self, model: Transformer, tokenizer: Tokenizer):
-    self.model = model
-    self.tokenizer = tokenizer
-
-  @property
-  def device(self) -> torch.device: return next(self.model.parameters()).device
-
-  def to(self, device: torch.device):
-    self.model = self.model.to(device)
-    return self
-
-  @staticmethod
-  def from_pretrained(model_desc: str='gpt2'):
-    model, tokenizer = from_pretrained(model_desc)
-    return GPT2(model, tokenizer)
-
-  def generate(self, prompt: str, max_new_tokens: int, num_return_sequences: int=1,
-               temperature: float=1.0, top_k: Optional[int]=None):
-    return generate(
-      self.model, self.tokenizer, self.device, prompt,
-      max_new_tokens, num_return_sequences, temperature, top_k)
-
-  def completion(self, prompts: str | List[str], max_new_tokens: int,
-                 temperature: float=1.0, top_k: Optional[int]=None):
-    return completion(
-      self.model, self.tokenizer, self.device,prompts, max_new_tokens, temperature, top_k)
-
-
-if __name__ == '__main__':
-  from models.helpers import set_device, set_seed
   device = set_device()
   set_seed(device)
 
@@ -75,3 +40,7 @@ if __name__ == '__main__':
   for i, sentence in enumerate(out):
     print(sentence.split('<|endoftext|>')[0])
     print('-'*50)
+
+
+if __name__ == '__main__':
+  main()
