@@ -1,77 +1,47 @@
 from typing import Set
-from tqdm import tqdm
+from pathlib import Path
 from models.helpers import timeit
 
 import torch
+import safetensors.torch
+from huggingface_hub import snapshot_download
+
 from models.gpt2.transformer import Transformer, GPTConfig
 from models.gpt2.tokenizer import Tokenizer
 
-def _copy_from_hf(model: Transformer, checkpoint: str, half: bool=False, transposed: Set[str]=set(), skip: Set[str]=set()):
-  from transformers import GPT2LMHeadModel
-  model_hf = GPT2LMHeadModel.from_pretrained(checkpoint)
-  if half: model, model_hf = model.half(), model_hf.half()
-  sd, sd_hf = model.state_dict(), model_hf.state_dict()
-  sd_keys = [k for k in sd.keys() if not any(k.endswith(w) for w in skip)]
-  sd_keys_hf = [k for k in sd_hf.keys() if not any(k.endswith(w) for w in skip)]
-  # copy while ensuring all of the parameters are aligned and match in names and shapes
-  assert len(sd_keys_hf) == len(sd_keys), f"mismatched keys: {len(sd_keys_hf)} != {len(sd_keys)}"
-  for k in tqdm(sd_keys_hf, desc=f'Loading pretrained weights'):
-    if any(k.endswith(w) for w in transposed):
-      assert sd_hf[k].shape[::-1] == sd[k].shape
-      with torch.no_grad(): sd[k].copy_(sd_hf[k].t())
-    else:
-      assert sd_hf[k].shape == sd[k].shape
-      with torch.no_grad(): sd[k].copy_(sd_hf[k])
-  return model
-
-def _load_from_cache(model: Transformer, checkpoint: str, transposed: Set[str]=set(), skip: Set[str]=set()):
-  from transformers.utils import try_to_load_from_cache
-  import safetensors.torch
-  safetensors_model_file = try_to_load_from_cache(repo_id=checkpoint, filename="model.safetensors")
-  loaded = dict()
-  for k, v in safetensors.torch.load_file(str(safetensors_model_file)).items():
+def _safetensors_load(repo_id: str, transposed: Set[str]=set(), skip: Set[str]=set()):
+  ckpt_dir = snapshot_download(repo_id, allow_patterns="*.safetensors")
+  checkpoints = sorted(Path(ckpt_dir).glob("*.safetensors"))
+  state_dict, filtered_state_dict  = {}, {}
+  for ckpt in checkpoints: state_dict.update(safetensors.torch.load_file(ckpt))
+  for k, v in state_dict.items():
     if any(k.endswith(w) for w in skip): continue
-    loaded[k] = v.t() if any(k.endswith(w) for w in transposed) else v
-  model.transformer.load_state_dict(loaded, assign=True, strict=True)
-  return model
+    filtered_state_dict[k] = v.t() if any(k.endswith(w) for w in transposed) else v
+  return filtered_state_dict
 
-def _safetensors_load(model: Transformer, checkpoint: str, transposed: Set[str]=set(), skip: Set[str]=set()):
-  from huggingface_hub import snapshot_download
-  import safetensors.torch
-  folder = f"downloads/{checkpoint}"
-  snapshot_download(checkpoint, local_dir=folder, allow_patterns="model.safetensors")
-  safetensors_model_file = f"{folder}/model.safetensors"
-  loaded = dict()
-  for k, v in safetensors.torch.load_file(str(safetensors_model_file)).items():
+def _torch_load(checkpoint: str, transposed: Set[str]=set(), skip: Set[str]=set()):
+  ckpt_dir = snapshot_download(checkpoint, allow_patterns="*.bin")
+  checkpoints = sorted(Path(ckpt_dir).glob("*.bin"))
+  state_dict, filtered_state_dict  = {}, {}
+  for ckpt in checkpoints:
+    state_dict.update(torch.load(ckpt, map_location='cpu', weights_only=True))
+  for k, v in state_dict.items():
     if any(k.endswith(w) for w in skip): continue
-    loaded[k] = v.t() if any(k.endswith(w) for w in transposed) else v
-  model.transformer.load_state_dict(loaded, assign=True, strict=True)
-  return model
-
-def _torch_load(model: Transformer, checkpoint: str, transposed: Set[str]=set(), skip: Set[str]=set()):
-  from huggingface_hub import snapshot_download
-  folder = f"downloads/{checkpoint}"
-  snapshot_download(checkpoint, local_dir=folder, allow_patterns="pytorch_model.bin")
-  pytorch_model_file = f"{folder}/pytorch_model.bin"
-  loaded = dict()
-  for k, v in torch.load(pytorch_model_file, weights_only=True).items():
-    if any(k.endswith(w) for w in skip): continue
-    loaded[k] = v.t() if any(k.endswith(w) for w in transposed) else v
-  model.transformer.load_state_dict(loaded, assign=True, strict=True)
-  return model
+    filtered_state_dict[k] = v.t() if any(k.endswith(w) for w in transposed) else v
+  return filtered_state_dict
 
 @timeit(desc="Load time", ms=False)
-def from_pretrained(model_type: str='gpt2', half: bool=False, assign: bool=False):
+def from_pretrained(model_desc: str='gpt2', safetensors: bool=False):
   config_args = {
     'gpt2':         dict(n_layer=12, n_head=12, n_embd=768),  # 124M params
     'gpt2-medium':  dict(n_layer=24, n_head=16, n_embd=1024), # 350M params
     'gpt2-large':   dict(n_layer=36, n_head=20, n_embd=1280), # 774M params
     'gpt2-xl':      dict(n_layer=48, n_head=25, n_embd=1600), # 1558M params
-  }[model_type]
+  }[model_desc]
   model = Transformer(GPTConfig(**config_args))
   transposed = {'attn.c_attn.weight', 'attn.c_proj.weight', 'mlp.c_fc.weight', 'mlp.c_proj.weight'}
   skip = {'.attn.masked_bias', '.attn.bias'}
-  if assign: model = _safetensors_load(model, model_type, transposed, skip)
-  else: model = _copy_from_hf(model, model_type, half, transposed, skip)
-  if half: model = model.half()
+  loader = _safetensors_load if safetensors else _torch_load
+  state_dict = loader(model_desc, transposed, skip)
+  model.transformer.load_state_dict(state_dict, assign=True, strict=True)
   return model.apply_weight_sharing(), Tokenizer()

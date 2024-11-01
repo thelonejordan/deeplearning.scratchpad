@@ -30,8 +30,8 @@ class GPT2:
     return self
 
   @staticmethod
-  def from_pretrained(model_type: str='gpt2', half: bool=False, assign: bool=False):
-    model, tokenizer = from_pretrained(model_type, half, assign)
+  def from_pretrained(model_desc: str='gpt2'):
+    model, tokenizer = from_pretrained(model_desc)
     return GPT2(model, tokenizer)
 
   def generate(self, prompt: str, max_new_tokens: int, num_return_sequences: int=1,
@@ -51,7 +51,7 @@ if __name__ == '__main__':
   device = set_device()
   set_seed(device)
 
-  model = GPT2.from_pretrained('gpt2', assign=True).to(device)
+  model = GPT2.from_pretrained().to(device)
 
   print("Testing generation...")
   num_return_sequences = 8
