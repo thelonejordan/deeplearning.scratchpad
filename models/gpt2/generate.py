@@ -25,71 +25,52 @@ class GPT2:
     model, tokenizer = from_pretrained(model_desc)
     return GPT2(model, tokenizer)
 
-  def generate(self, prompt: str, max_new_tokens: int, num_return_sequences: int=1,
-               temperature: float=1.0, top_k: Optional[int]=None):
-    return generate(self, prompt, max_new_tokens, num_return_sequences, temperature, top_k)
-
-  def completion(self, prompts: str | List[str], max_new_tokens: int,
+  def text_completion(self, prompts: str | List[str], max_new_tokens: int,
                  temperature: float=1.0, top_k: Optional[int]=None):
-    return completion(self, prompts, max_new_tokens, temperature, top_k)
+    return text_completion(self, prompts, max_new_tokens, temperature, top_k)
 
 
 @torch.inference_mode()
-def generate(generator: GPT2, prompt: str, max_new_tokens: int,
-             num_return_sequences: int=1, temperature: float=1.0, top_k: Optional[int]=None):
-  model, tokenizer = generator.model, generator.tokenizer
-  config, device = model.config, generator.device
-  idx = torch.tensor(tokenizer.encode_batch(prompt), dtype=torch.long, device=device)
-  assert idx.size(0) == 1 and num_return_sequences >= 1 and temperature > 0.0
-  assert idx.size(1) <= config.n_ctx
-  idx = idx.repeat(num_return_sequences, 1)
-  model.eval()
-  while idx.size(1) < max_new_tokens:
-    idx_cond = idx if idx.size(1)<=config.n_ctx else idx[:, -config.n_ctx:]
-    with torch.no_grad():
-      logits = model(idx_cond) / temperature
-    if top_k is not None and top_k < config.vocab_size:
-      assert top_k > 0
-      _, topk_indices = torch.topk(logits, config.vocab_size - top_k, largest=False)
-      logits.scatter_(-1, topk_indices, -float('inf'))
-    probs = F.softmax(logits, dim=-1)
-    idx_next = torch.multinomial(probs[:, -1, :], num_samples=1)
-    idx = torch.cat((idx, idx_next), dim=-1)
-  return tokenizer.decode_batch(idx.tolist())
-
-@torch.inference_mode()
-def completion(generator: GPT2, prompts: str | List[str],
+def generate(generator: GPT2, prompt_tokens: List[List[int]],
                max_new_tokens: int, temperature: float=1.0, top_k: Optional[int]=None):
   model, tokenizer = generator.model, generator.tokenizer
   config, device = model.config, generator.device
-  if isinstance(prompts, str): prompts = [prompts]
-  idxs, masks = [], []
+  batch, masks = [], []
   start_pos = max_new_tokens
-  for i in range(len(prompts)):
-    idx = tokenizer.model.encode(prompts[i])
-    mask = [1 for _ in range(len(idx))]
-    start_pos = min(start_pos, len(idx))
-    if len(idx) < max_new_tokens:
-      rem = max_new_tokens - len(idx)
-      idx.extend([tokenizer.eot_token for _ in range(rem)])
+  for toks in prompt_tokens:
+    mask = [1 for _ in range(len(toks))]
+    start_pos = min(start_pos, len(toks))
+    if len(toks) < max_new_tokens:
+      rem = max_new_tokens - len(toks)
+      toks.extend([tokenizer.eot_token for _ in range(rem)])
       mask.extend([0 for _ in range(rem)])
-    idxs.append(idx)
+    batch.append(toks)
     masks.append(mask)
-  assert all(len(idx) < config.n_ctx for idx in idxs)
-  idx = torch.tensor(idxs, dtype=torch.long, device=device)
+  assert all(len(toks) < config.n_ctx for toks in batch)
+  batch = torch.tensor(batch, dtype=torch.long, device=device)
   mask = torch.tensor(masks, dtype=torch.long, device=device)
   model.eval()
   cur_pos = start_pos
   while cur_pos < max_new_tokens:
-    idx_cond = idx[:,:cur_pos] if cur_pos<=config.n_ctx else idx[:, -config.n_ctx:]
+    context = batch[:,:cur_pos] if cur_pos<=config.n_ctx else batch[:, -config.n_ctx:]
     with torch.no_grad():
-      logits = model(idx_cond) / temperature
+      logits = model(context) / temperature
     if top_k is not None and top_k < config.vocab_size:
       assert top_k > 0
       _, topk_indices = torch.topk(logits, config.vocab_size - top_k, largest=False)
       logits.scatter_(-1, topk_indices, -float('inf'))
     probs = F.softmax(logits, dim=-1)
-    idx_next = torch.multinomial(probs[:, -1, :], num_samples=1)
-    idx[:,[cur_pos]] = torch.where(mask[:, [cur_pos]]>0.5, idx[:,[cur_pos]], idx_next)
+    next_token = torch.multinomial(probs[:, -1, :], num_samples=1)
+    batch[:,[cur_pos]] = torch.where(mask[:, [cur_pos]]>0.5, batch[:,[cur_pos]], next_token)
     cur_pos += 1
-  return tokenizer.decode_batch(idx.tolist())
+  return batch.tolist()
+
+
+@torch.inference_mode()
+def text_completion(generator: GPT2, prompts: str | List[str],
+               max_new_tokens: int, temperature: float=1.0, top_k: Optional[int]=None):
+  tokenizer = generator.tokenizer
+  if isinstance(prompts, str): prompts = [prompts]
+  prompt_tokens = tokenizer.encode_batch(prompts)
+  completions = generate(generator, prompt_tokens, max_new_tokens, temperature, top_k)
+  return tokenizer.decode_batch(completions)

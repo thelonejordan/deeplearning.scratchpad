@@ -18,27 +18,28 @@ def main():
 
   model = GPT2.from_pretrained().to(device)
 
-  print("Testing generation...")
+  print("Testing text completion (1)...")
   num_return_sequences = 8
-  max_length = 32
+  max_new_tokens = 32
   context = "Hello, I'm a language model,"
-  out = model.generate(context, max_length, num_return_sequences, top_k=50)
+  prompts = [context] * num_return_sequences
+  out = model.text_completion(prompts, max_new_tokens, top_k=50)
   print('-'*50)
   for i, sentence in enumerate(out):
-    print(sentence.split('<|endoftext|>')[0])
+    print(i, sentence)
     print('-'*50)
 
-  print("Testing completion...")
+  print("Testing text completion (2)...")
   max_length = 200
-  context = [
+  prompts = [
     "Hello, I'm a language model,",
     "Quantum computing is",
     "SpaceX and NASA have collaborated to make commercial"
   ]
-  out = model.completion(context, max_length, top_k=50)
+  out = model.text_completion(prompts, max_length, top_k=50)
   print('-'*50)
-  for i, sentence in enumerate(out):
-    print(sentence.split('<|endoftext|>')[0])
+  for sentence in out:
+    print(sentence)
     print('-'*50)
 
 
