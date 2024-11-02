@@ -50,10 +50,15 @@ def generate(generator: GPT2, prompt_tokens: List[List[int]], max_new_tokens: in
   while cur_pos < total_len:
     context = batch[:,:cur_pos] if cur_pos<=config.n_ctx else batch[:, -config.n_ctx:]
     with torch.no_grad():
-      logits = model(context)
-    if temperature > 0: cast(Tensor, logits).div_(temperature)
-    logits = top_k_logits(logits, top_k)
-    logits = top_p_logits(logits, top_p)
+      logits: Tensor = model(context)
+    if temperature > 0:
+      logits.div_(temperature)
+      logits = top_k_logits(logits, top_k)
+      logits = top_p_logits(logits, top_p)
+    else:
+      indices = logits.argmax(-1, keepdim=True)
+      logits = torch.full_like(
+        logits, -1e10, dtype=logits.dtype, device=device).scatter(-1, indices, logits)
     probs = F.softmax(logits, dim=-1)
     next_token = torch.multinomial(probs[:, -1, :], num_samples=1)
     batch[:,[cur_pos]] = torch.where(
@@ -80,7 +85,7 @@ def top_p_logits(logits: Tensor, p: float):
   min_values = torch.gather(sorted_logits, -1, indices)
   return torch.where(
     logits < min_values,
-    torch.full_like(logits, fill_value=-1e10, dtype=logits.dtype),
+    torch.full_like(logits, -1e10, dtype=logits.dtype, device=logits.device),
     logits)
 
 
@@ -92,5 +97,5 @@ def top_k_logits(logits: Tensor, k: int):
   min_values = values[:, :, [-1]]
   return torch.where(
     logits < min_values,
-    torch.full_like(logits, fill_value=-1e10, dtype=logits.dtype),
+    torch.full_like(logits, -1e10, dtype=logits.dtype, device=logits.device),
     logits)
