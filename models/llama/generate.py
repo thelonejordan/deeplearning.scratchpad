@@ -23,23 +23,23 @@ class Llama:
     model, tokenizer = build(max_seq_len, max_batch_size, model_desc)
     return Llama(model, tokenizer)
 
-  def generate(self, prompts: List[str], max_gen_len: int, temperature: float=0.8, top_p: float=0.95) -> List[str]:
-    return generate(self, prompts, max_gen_len, temperature, top_p)
+  def text_completion(self, prompts: List[str], max_gen_len: int,
+               temperature: float=0.8, top_p: float=0.95) -> List[str]:
+    return text_completion(self, prompts, max_gen_len, temperature, top_p)
 
 
 @torch.inference_mode()
-def generate(generator: Llama, prompts: List[str],
-             max_gen_len: int, temperature: float=0.8, top_p: float=0.95) -> List[str]:
+def generate(generator: Llama, prompt_tokens: List[List[int]],
+             max_gen_len: int, temperature: float=0.8, top_p: float=0.95) -> List[List[int]]:
   model, tokenizer = generator.model, generator.tokenizer
   params, device = model.config, generator.device
-  bsz = len(prompts)
-  assert bsz <= params.max_batch_size, (bsz, params.max_batch_size)
-  prompt_tokens = [tokenizer.encode(x, bos=True, eos=False) for x in prompts]
   min_prompt_size = min([len(t) for t in prompt_tokens])
   max_prompt_size = max([len(t) for t in prompt_tokens])
   total_len = min(params.max_seq_len, max_gen_len + max_prompt_size)
-  tokens = torch.full((bsz, total_len), tokenizer.pad_id, device=device, dtype=torch.long)
-  for k, t in enumerate(prompt_tokens): tokens[k, : len(t)] = torch.tensor(t, device=device, dtype=torch.long)
+  tokens = torch.full(
+    (len(prompt_tokens), total_len), tokenizer.pad_id, device=device, dtype=torch.long)
+  for k, t in enumerate(prompt_tokens):
+    tokens[k, : len(t)] = torch.tensor(t, device=device, dtype=torch.long)
   input_text_mask = tokens != tokenizer.pad_id
   prev_pos = 0
   model.eval()
@@ -56,8 +56,20 @@ def generate(generator: Llama, prompts: List[str],
     next_token = torch.where(input_text_mask[:, cur_pos], tokens[:, cur_pos], next_token)
     tokens[:, cur_pos] = next_token
     prev_pos = cur_pos
+  return tokens.tolist()
+
+
+@torch.inference_mode()
+def text_completion(generator: Llama, prompts: List[str], max_gen_len: int,
+                    temperature: float=0.8, top_p: float=0.95) -> List[str]:
+  model, tokenizer = generator.model, generator.tokenizer
+  params = model.config
+  bsz = len(prompts)
+  assert bsz <= params.max_batch_size, (bsz, params.max_batch_size)
+  prompt_tokens = [tokenizer.encode(x, bos=True, eos=False) for x in prompts]
+  tokens = generate(generator, prompt_tokens, max_gen_len, temperature, top_p)
   decoded = []
-  for i, t in enumerate(tokens.tolist()):
+  for i, t in enumerate(tokens):
     t = t[: len(prompt_tokens[i]) + max_gen_len] # cut to max gen len
     try: t = t[: t.index(tokenizer.eos_id)] # cut to eos tok if any
     except ValueError: pass

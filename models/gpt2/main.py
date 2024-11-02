@@ -23,10 +23,10 @@ def main():
   context = "Hello, I'm a language model,"
   prompts = [context] * num_return_sequences
   out = model.text_completion(prompts, 64, top_k=50)
-  print('-'*50)
-  for i, sentence in enumerate(out):
-    print(i, sentence)
-    print('-'*50)
+  print('-' * 50)
+  for sentence in out:
+    print(sentence)
+    print('-' * 50)
 
   print()
 
@@ -37,10 +37,10 @@ def main():
     "SpaceX and NASA have collaborated to make commercial"
   ]
   out = model.text_completion(prompts, 256, top_k=50, top_p=0.75)
-  print('-'*50)
+  print('-' * 50)
   for sentence in out:
     print(sentence)
-    print('-'*50)
+    print('-' * 50)
 
 
 if __name__ == '__main__':

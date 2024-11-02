@@ -17,15 +17,14 @@ def main():
   model = Llama.from_pretrained(max_batch_size=4).to(device)
 
   num_return_sequences = 4
-  max_gen_len = 32
   context = "Hello, I'm a language model,"
-
   prompts = [context] * num_return_sequences
-  out = model.generate(prompts, max_gen_len)
-  print('-'*50)
-  for i, sentence in enumerate(out):
+
+  out = model.text_completion(prompts, 32)
+  print('-' * 50)
+  for sentence in out:
     print(sentence)
-    print('-'*50)
+    print('-' * 50)
 
 
 if __name__ == "__main__":
