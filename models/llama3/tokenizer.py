@@ -29,15 +29,14 @@ class Tokenizer:
       "<|reserved_special_token_4|>",
       "<|eot_id|>",  # end of turn
     ] + [
-      f"<|reserved_special_token_{i}|>"
-      for i in range(5, self.num_reserved_special_tokens - 5)
+      f"<|reserved_special_token_{i}|>" for i in range(5, self.num_reserved_special_tokens - 5)
     ]
     self.special_tokens = {token: num_base_tokens + i for i, token in enumerate(special_tokens)}
     self.model = tiktoken.Encoding(
-        name=Path(model_path).name,
-        pat_str=self.pat_str,
-        mergeable_ranks=mergeable_ranks,
-        special_tokens=self.special_tokens,
+      name=Path(model_path).name,
+      pat_str=self.pat_str,
+      mergeable_ranks=mergeable_ranks,
+      special_tokens=self.special_tokens,
     )
     print(f"Reloaded tiktoken model from {model_path}")
 
@@ -47,14 +46,14 @@ class Tokenizer:
     self.eos_id: int = self.special_tokens["<|end_of_text|>"]
     self.pad_id: int = -1
     self.stop_tokens = {
-        self.special_tokens["<|end_of_text|>"],
-        self.special_tokens["<|eot_id|>"],
+      self.special_tokens["<|end_of_text|>"],
+      self.special_tokens["<|eot_id|>"],
     }
     print(f"#words: {self.n_words} - BOS ID: {self.bos_id} - EOS ID: {self.eos_id}")
 
   def encode(self, s: str, *, bos: bool, eos: bool,
-              allowed_special: Union[Literal["all"], AbstractSet[str]] = set(),
-              disallowed_special: Union[Literal["all"], Collection[str]] = ()) -> List[int]:
+             allowed_special: Union[Literal["all"], AbstractSet[str]] = set(),
+             disallowed_special: Union[Literal["all"], Collection[str]] = ()) -> List[int]:
     """
     Encodes a string into a list of token IDs.
 
@@ -89,7 +88,7 @@ class Tokenizer:
       substr
       for i in range(0, len(s), TIKTOKEN_MAX_ENCODE_CHARS)
       for substr in self._split_whitespaces_or_nonwhitespaces(
-          s[i : i + TIKTOKEN_MAX_ENCODE_CHARS], MAX_NO_WHITESPACES_CHARS))
+        s[i : i + TIKTOKEN_MAX_ENCODE_CHARS], MAX_NO_WHITESPACES_CHARS))
 
     t: List[int] = []
     for substr in substrs:

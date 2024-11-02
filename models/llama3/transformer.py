@@ -96,8 +96,14 @@ class Transformer(nn.Module):
     freqs_cis = self.freqs_cis[start_pos : start_pos + seqlen]
     mask = None
     if seqlen > 1:
-      mask = torch.full((1, 1, seqlen, seqlen), float('-inf'), device=device)
-      mask = torch.triu(mask, diagonal=start_pos + 1).type_as(h)
+      mask = torch.full((seqlen, seqlen), float('-inf'), device=device)
+      mask = torch.triu(mask, diagonal=1).type_as(h)
+      # When performing key-value caching, we compute the attention scores
+      # only for the new sequence. Thus, the matrix of scores is of size
+      # (seqlen, cache_len + seqlen), and the only masked entries are (i, j) for
+      # j > cache_len + i, since row i corresponds to token cache_len + i.
+      mask = torch.hstack(
+        [torch.zeros((seqlen, start_pos), device=device), mask]).type_as(h)
     for layer in self.model.layers: h = layer(h, start_pos, freqs_cis, mask)
     h = self.model.norm(h)
     output = self.lm_head(h).float()

@@ -28,9 +28,9 @@ def main():
   out = model.text_completion(prompts, max_gen_len=64, echo=True)
   assert len(out) == len(prompts)
   print('-' * 50)
-  for i in range(len(out)):
-    text = out[i]['generation']
-    print(f'{text}')
+  for item in out:
+    text = item['generation']
+    print(text)
     print('-' * 50)
 
 

@@ -12,20 +12,19 @@ def main():
   device = set_device('cpu') # hardcode, as MPS OOMs
   set_seed(device)
 
-  # TODO: Llama-3.1-8B generation looks sketchy!
   model = Llama.from_pretrained(max_batch_size=2, model_desc='8B', version=1).to(device)
 
   prompts = [
     "Simply put, the theory of relativity states that",
-    "If Google was an Italian company founded in Milan, it would",
+    "The phenomenon of global warming refers to the",
   ]
 
-  out = model.text_completion(prompts, max_gen_len=64, echo=True)
+  out = model.text_completion(prompts, max_gen_len=64, temperature=0.9, echo=True)
   assert len(out) == len(prompts)
   print('-' * 50)
-  for i in range(len(out)):
-    text = out[i]['generation']
-    print(f'{text}')
+  for item in out:
+    text = item['generation']
+    print(text)
     print('-' * 50)
 
 
