@@ -31,17 +31,19 @@ def _torch_load(checkpoint: str, transposed: Set[str]=set(), skip: Set[str]=set(
   return filtered_state_dict
 
 @timeit(desc="Load time", ms=False)
-def from_pretrained(model_desc: str='gpt2', safetensors: bool=False):
-  config_args = {
+def from_pretrained(model_desc: str='gpt2', safetensors: bool=True):
+  params = {
     'gpt2':         dict(n_layer=12, n_head=12, n_embd=768),  # 124M params
     'gpt2-medium':  dict(n_layer=24, n_head=16, n_embd=1024), # 350M params
     'gpt2-large':   dict(n_layer=36, n_head=20, n_embd=1280), # 774M params
     'gpt2-xl':      dict(n_layer=48, n_head=25, n_embd=1600), # 1558M params
   }[model_desc]
-  model = Transformer(GPTConfig(**config_args))
   transposed = {'attn.c_attn.weight', 'attn.c_proj.weight', 'mlp.c_fc.weight', 'mlp.c_proj.weight'}
   skip = {'.attn.masked_bias', '.attn.bias'}
   loader = _safetensors_load if safetensors else _torch_load
   state_dict = loader(model_desc, transposed, skip)
+  tokenizer = Tokenizer()
+  params['vocab_size'] = tokenizer.model.n_vocab
+  model = Transformer(GPTConfig(**params))
   model.transformer.load_state_dict(state_dict, assign=True, strict=True)
-  return model.apply_weight_sharing(), Tokenizer()
+  return model.apply_weight_sharing(), tokenizer

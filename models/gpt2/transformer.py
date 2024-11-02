@@ -8,8 +8,8 @@ from torch.nn import Embedding, Linear, LayerNorm
 
 @dataclass
 class GPTConfig:
-  block_size: int = 1024
   vocab_size: int = 50257
+  n_ctx: int = 1024
   n_layer: int = 12
   n_head: int = 12
   n_embd: int = 768
@@ -23,7 +23,7 @@ class CausalSelfAttention(nn.Module):
     self.n_head, self.n_embd, self.head_size = config.n_head, config.n_embd, config.n_embd // config.n_head
     self.c_attn = Linear(config.n_embd, 3 * config.n_embd)
     self.c_proj = Linear(config.n_embd, config.n_embd)
-    self.bias = torch.tril(torch.ones(1, 1, config.block_size, config.block_size))
+    self.bias = torch.tril(torch.ones(1, 1, config.n_ctx, config.n_ctx))
 
   def forward(self, x: Tensor):
     B, T, C= x.size()
@@ -80,7 +80,7 @@ class Transformer(nn.Module):
     self.config = config
     self.transformer = nn.ModuleDict(dict(
         wte = Embedding(config.vocab_size, config.n_embd),
-        wpe = Embedding(config.block_size, config.n_embd),
+        wpe = Embedding(config.n_ctx, config.n_embd),
         h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
         ln_f = LayerNorm(config.n_embd, eps=config.norm_eps),
     ))

@@ -39,12 +39,13 @@ def generate(generator: GPT2, prompt: str, max_new_tokens: int,
              num_return_sequences: int=1, temperature: float=1.0, top_k: Optional[int]=None):
   model, tokenizer = generator.model, generator.tokenizer
   config, device = model.config, generator.device
-  idx = tokenizer.encode_batch(prompt, device=device)
+  idx = torch.tensor(tokenizer.encode_batch(prompt), dtype=torch.long, device=device)
   assert idx.size(0) == 1 and num_return_sequences >= 1 and temperature > 0.0
+  assert idx.size(1) <= config.n_ctx
   idx = idx.repeat(num_return_sequences, 1)
   model.eval()
   while idx.size(1) < max_new_tokens:
-    idx_cond = idx if idx.size(1)<=config.block_size else idx[:, -config.block_size:]
+    idx_cond = idx if idx.size(1)<=config.n_ctx else idx[:, -config.n_ctx:]
     with torch.no_grad():
       logits = model(idx_cond) / temperature
     if top_k is not None and top_k < config.vocab_size:
@@ -61,6 +62,7 @@ def completion(generator: GPT2, prompts: str | List[str],
                max_new_tokens: int, temperature: float=1.0, top_k: Optional[int]=None):
   model, tokenizer = generator.model, generator.tokenizer
   config, device = model.config, generator.device
+  if isinstance(prompts, str): prompts = [prompts]
   idxs, masks = [], []
   start_pos = max_new_tokens
   for i in range(len(prompts)):
@@ -73,12 +75,13 @@ def completion(generator: GPT2, prompts: str | List[str],
       mask.extend([0 for _ in range(rem)])
     idxs.append(idx)
     masks.append(mask)
+  assert all(len(idx) < config.n_ctx for idx in idxs)
   idx = torch.tensor(idxs, dtype=torch.long, device=device)
   mask = torch.tensor(masks, dtype=torch.long, device=device)
   model.eval()
   cur_pos = start_pos
   while cur_pos < max_new_tokens:
-    idx_cond = idx[:,:cur_pos] if cur_pos<=config.block_size else idx[:, -config.block_size:]
+    idx_cond = idx[:,:cur_pos] if cur_pos<=config.n_ctx else idx[:, -config.n_ctx:]
     with torch.no_grad():
       logits = model(idx_cond) / temperature
     if top_k is not None and top_k < config.vocab_size:

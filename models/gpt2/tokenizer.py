@@ -1,7 +1,4 @@
 from typing import List
-
-import torch
-from torch import Tensor
 import tiktoken
 
 class Tokenizer:
@@ -9,9 +6,9 @@ class Tokenizer:
     self.model = tiktoken.get_encoding('gpt2')
     self.eot_token = self.model.eot_token
 
-  def encode_batch(self, input: List[str] | str, device: torch.device):
+  def encode_batch(self, input: str | List[str]) -> List[List[int]]:
     batch = [input] if isinstance(input, str) else input
-    return torch.tensor(self.model.encode_batch(batch), dtype=torch.long, device=device)
+    return self.model.encode_batch(batch)
 
-  def decode_batch(self, idx: List[List[int]]):
+  def decode_batch(self, idx: List[List[int]]) -> List[str]:
     return self.model.decode_batch(idx)
