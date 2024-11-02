@@ -1,6 +1,7 @@
-from typing import Optional, List
+from typing import Optional, List, cast
 
 import torch
+from torch import Tensor
 from torch.nn import functional as F
 from models.gpt2.load import from_pretrained
 
@@ -25,52 +26,71 @@ class GPT2:
     model, tokenizer = from_pretrained(model_desc)
     return GPT2(model, tokenizer)
 
-  def text_completion(self, prompts: str | List[str], max_new_tokens: int,
-                 temperature: float=1.0, top_k: Optional[int]=None):
-    return text_completion(self, prompts, max_new_tokens, temperature, top_k)
+  def text_completion(self, prompts: List[str], max_new_tokens: int,
+                      temperature: float=1.0, top_k: int=0, top_p: float=1.0):
+    return text_completion(self, prompts, max_new_tokens, temperature, top_k, top_p)
 
 
 @torch.inference_mode()
-def generate(generator: GPT2, prompt_tokens: List[List[int]],
-               max_new_tokens: int, temperature: float=1.0, top_k: Optional[int]=None):
+def generate(generator: GPT2, prompt_tokens: List[List[int]], max_new_tokens: int,
+             temperature: float=1.0, top_k: int=0, top_p: float=1.0):
   model, tokenizer = generator.model, generator.tokenizer
   config, device = model.config, generator.device
-  batch, masks = [], []
-  start_pos = max_new_tokens
-  for toks in prompt_tokens:
-    mask = [1 for _ in range(len(toks))]
-    start_pos = min(start_pos, len(toks))
-    if len(toks) < max_new_tokens:
-      rem = max_new_tokens - len(toks)
-      toks.extend([tokenizer.eot_token for _ in range(rem)])
-      mask.extend([0 for _ in range(rem)])
-    batch.append(toks)
-    masks.append(mask)
-  assert all(len(toks) < config.n_ctx for toks in batch)
-  batch = torch.tensor(batch, dtype=torch.long, device=device)
-  mask = torch.tensor(masks, dtype=torch.long, device=device)
+  min_prompt_size = min([len(t) for t in prompt_tokens])
+  max_prompt_size = max([len(t) for t in prompt_tokens])
+  total_len = min(config.n_ctx, max_prompt_size + max_new_tokens)
+  batch = torch.full(
+    (len(prompt_tokens), total_len), tokenizer.eot_token, dtype=torch.long, device=device)
+  mask = torch.ones_like(batch, dtype=torch.long, device=device)
+  for i, toks in enumerate(prompt_tokens):
+    batch[i, :len(toks)] = torch.tensor(toks, dtype=torch.long, device=device)
+    mask[i, len(toks):] = 0
   model.eval()
-  cur_pos = start_pos
-  while cur_pos < max_new_tokens:
+  cur_pos = min_prompt_size
+  while cur_pos < total_len:
     context = batch[:,:cur_pos] if cur_pos<=config.n_ctx else batch[:, -config.n_ctx:]
     with torch.no_grad():
-      logits = model(context) / temperature
-    if top_k is not None and top_k < config.vocab_size:
-      assert top_k > 0
-      _, topk_indices = torch.topk(logits, config.vocab_size - top_k, largest=False)
-      logits.scatter_(-1, topk_indices, -float('inf'))
+      logits = model(context)
+    if temperature > 0: cast(Tensor, logits).div_(temperature)
+    logits = top_k_logits(logits, top_k)
+    logits = top_p_logits(logits, top_p)
     probs = F.softmax(logits, dim=-1)
     next_token = torch.multinomial(probs[:, -1, :], num_samples=1)
-    batch[:,[cur_pos]] = torch.where(mask[:, [cur_pos]]>0.5, batch[:,[cur_pos]], next_token)
+    batch[:,[cur_pos]] = torch.where(
+      mask[:, [cur_pos]] > 0.5, batch[:,[cur_pos]], next_token)
     cur_pos += 1
   return batch.tolist()
 
 
 @torch.inference_mode()
-def text_completion(generator: GPT2, prompts: str | List[str],
-               max_new_tokens: int, temperature: float=1.0, top_k: Optional[int]=None):
+def text_completion(generator: GPT2, prompts: List[str], max_new_tokens: int,
+                    temperature: float=1.0, top_k: int=0, top_p: float=1.0):
   tokenizer = generator.tokenizer
-  if isinstance(prompts, str): prompts = [prompts]
   prompt_tokens = tokenizer.encode_batch(prompts)
-  completions = generate(generator, prompt_tokens, max_new_tokens, temperature, top_k)
+  completions = generate(generator, prompt_tokens, max_new_tokens, temperature, top_k, top_p)
   return tokenizer.decode_batch(completions)
+
+
+def top_p_logits(logits: Tensor, p: float):
+  """Nucleus sampling"""
+  sorted_logits = logits.sort(dim=-1, descending=True).values
+  cumulative_probs = F.softmax(sorted_logits, dim=-1).cumsum(dim=-1)
+  counts = cast(Tensor, cumulative_probs <= p).long().sum(dim=-1, keepdim=True)
+  indices = torch.maximum(counts - 1, torch.zeros_like(counts)).long()
+  min_values = torch.gather(sorted_logits, -1, indices)
+  return torch.where(
+    logits < min_values,
+    torch.full_like(logits, fill_value=-1e10, dtype=logits.dtype),
+    logits)
+
+
+def top_k_logits(logits: Tensor, k: int):
+  if k == 0:
+    # no truncation
+    return logits
+  values, _ = torch.topk(logits, k=k)
+  min_values = values[:, :, [-1]]
+  return torch.where(
+    logits < min_values,
+    torch.full_like(logits, fill_value=-1e10, dtype=logits.dtype),
+    logits)

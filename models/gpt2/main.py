@@ -20,23 +20,23 @@ def main():
 
   print("Testing text completion (1)...")
   num_return_sequences = 8
-  max_new_tokens = 32
   context = "Hello, I'm a language model,"
   prompts = [context] * num_return_sequences
-  out = model.text_completion(prompts, max_new_tokens, top_k=50)
+  out = model.text_completion(prompts, 64, top_k=50)
   print('-'*50)
   for i, sentence in enumerate(out):
     print(i, sentence)
     print('-'*50)
 
+  print()
+
   print("Testing text completion (2)...")
-  max_length = 200
   prompts = [
     "Hello, I'm a language model,",
     "Quantum computing is",
     "SpaceX and NASA have collaborated to make commercial"
   ]
-  out = model.text_completion(prompts, max_length, top_k=50)
+  out = model.text_completion(prompts, 256, top_k=50, top_p=0.75)
   print('-'*50)
   for sentence in out:
     print(sentence)

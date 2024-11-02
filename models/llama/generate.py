@@ -38,8 +38,8 @@ def generate(generator: Llama, prompts: List[str],
   min_prompt_size = min([len(t) for t in prompt_tokens])
   max_prompt_size = max([len(t) for t in prompt_tokens])
   total_len = min(params.max_seq_len, max_gen_len + max_prompt_size)
-  tokens = torch.full((bsz, total_len), tokenizer.pad_id, device=device).long()
-  for k, t in enumerate(prompt_tokens): tokens[k, : len(t)] = torch.tensor(t, device=device).long()
+  tokens = torch.full((bsz, total_len), tokenizer.pad_id, device=device, dtype=torch.long)
+  for k, t in enumerate(prompt_tokens): tokens[k, : len(t)] = torch.tensor(t, device=device, dtype=torch.long)
   input_text_mask = tokens != tokenizer.pad_id
   prev_pos = 0
   model.eval()
