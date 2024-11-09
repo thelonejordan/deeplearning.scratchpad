@@ -40,6 +40,7 @@ class Attention(nn.Module):
 
     keys = self.cache_k[:bsz, : start_pos + seqlen]
     values = self.cache_v[:bsz, : start_pos + seqlen]
+    # repeat k/v heads if n_kv_heads < n_heads
     keys = repeat_kv(keys, self.n_rep) # (bs, seqlen, n_local_heads, head_dim)
     values = repeat_kv(values, self.n_rep) # (bs, seqlen, n_local_heads, head_dim)
     xq, keys, values = xq.transpose(1, 2), keys.transpose(1, 2), values.transpose(1, 2)
