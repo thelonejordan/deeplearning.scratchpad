@@ -84,7 +84,7 @@ def generate(generator: Llama, prompt_tokens: List[List[int]], max_gen_len: int,
       ignore_index=pad_id,
     )
 
-  stop_tokens = torch.tensor(list(tokenizer.stop_tokens))
+  stop_tokens = torch.tensor(list(tokenizer.stop_tokens), device=device)
 
   for cur_pos in range(min_prompt_len, total_len):
     logits = model.forward(tokens[:, prev_pos:cur_pos], prev_pos)
