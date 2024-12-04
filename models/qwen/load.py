@@ -33,6 +33,8 @@ def build(max_seq_len: int, max_batch_size: int, seed: int=1):
 if __name__ == "__main__":
   # https://huggingface.co/Qwen/QwQ-32B-Preview
   # https://qwenlm.github.io/blog/qwq-32b-preview/
+  # https://github.com/huggingface/transformers/blob/main/src/transformers/models/qwen2/tokenization_qwen2.py
+  # https://github.com/huggingface/transformers/blob/main/src/transformers/models/qwen2/modeling_qwen2.py
   repo_id = "Qwen/QwQ-32B-Preview"
   state_dict = _safetensors_load(repo_id)
   for k, v in state_dict.items():
