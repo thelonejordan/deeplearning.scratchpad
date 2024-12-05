@@ -1,4 +1,4 @@
-from typing import Optional, List, cast
+from typing import List, cast
 
 import torch
 from torch import Tensor
