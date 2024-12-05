@@ -1,5 +1,6 @@
 from typing import Set
 from pathlib import Path
+from dataclasses import asdict
 from models.helpers import timeit
 
 import torch
@@ -44,6 +45,7 @@ def from_pretrained(model_desc: str='gpt2', safetensors: bool=True):
   state_dict = loader(model_desc, transposed, skip)
   tokenizer = Tokenizer()
   params['vocab_size'] = tokenizer.model.n_vocab
-  model = Transformer(GPTConfig(**params))
+  config = GPTConfig(**params)
+  model = Transformer(**asdict(config))
   model.transformer.load_state_dict(state_dict, assign=True, strict=True)
-  return model.apply_weight_sharing(), tokenizer
+  return model.apply_weight_sharing(), tokenizer, config

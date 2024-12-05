@@ -17,13 +17,13 @@ class GPTConfig:
 
 
 class CausalSelfAttention(nn.Module):
-  def __init__(self, config: GPTConfig):
+  def __init__(self, n_embd: int, n_head: int, n_ctx: int, **_):
     super().__init__()
-    assert config.n_embd % config.n_head == 0
-    self.n_head, self.n_embd, self.head_size = config.n_head, config.n_embd, config.n_embd // config.n_head
-    self.c_attn = Linear(config.n_embd, 3 * config.n_embd)
-    self.c_proj = Linear(config.n_embd, config.n_embd)
-    self.bias = torch.tril(torch.ones(1, 1, config.n_ctx, config.n_ctx))
+    assert n_embd % n_head == 0
+    self.n_head, self.n_embd, self.head_size = n_head, n_embd, n_embd // n_head
+    self.c_attn = Linear(n_embd, 3 * n_embd)
+    self.c_proj = Linear(n_embd, n_embd)
+    self.bias = torch.tril(torch.ones(1, 1, n_ctx, n_ctx))
 
   def forward(self, x: Tensor):
     B, T, C= x.size()
@@ -38,22 +38,24 @@ class CausalSelfAttention(nn.Module):
     return y
 
   @staticmethod
-  def _attention(q: Tensor, k: Tensor, v: Tensor, mask: Tensor, scale: float, use_fused: bool=True) -> Tensor:
+  def _attention(q: Tensor, k: Tensor, v: Tensor, mask: Tensor, scale: float) -> Tensor:
     mask = mask.to(q.device)
-    if use_fused:
-      y = F.scaled_dot_product_attention(q, k, v, mask > 0.5, scale=scale) # flash attention
-      return y
     att = (q @ k.transpose(-2, -1)) * scale # (B, H, T, T)
     att = att.masked_fill(mask < 0.5, -float('inf')) # causal mask
     y = F.softmax(att, dim=-1) @ v # (B, H, T, T) x (B, H, T, C') -> (B, H, T, C')
     return y
 
+  @staticmethod
+  def _fused_attention(q: Tensor, k: Tensor, v: Tensor, mask: Tensor, scale: float) -> Tensor:
+    mask = mask.to(q.device)
+    y = F.scaled_dot_product_attention(q, k, v, mask > 0.5, scale=scale) # flash attention
+    return y
 
 class MLP(nn.Module):
-  def __init__(self, config: GPTConfig):
+  def __init__(self, n_embd: int, **_):
     super().__init__()
-    self.c_fc = Linear(config.n_embd, config.n_embd * 4)
-    self.c_proj = Linear(4 * config.n_embd, config.n_embd)
+    self.c_fc = Linear(n_embd, n_embd * 4)
+    self.c_proj = Linear(4 * n_embd, n_embd)
 
   def forward(self, x: Tensor):
     x = self.c_proj(F.gelu(self.c_fc(x), approximate='tanh'))
@@ -61,12 +63,12 @@ class MLP(nn.Module):
 
 
 class Block(nn.Module):
-  def __init__(self, config: GPTConfig):
+  def __init__(self, n_embd: int, n_head: int, n_ctx: int, norm_eps: int, **_):
     super().__init__()
-    self.ln_1 = LayerNorm(config.n_embd, eps=config.norm_eps)
-    self.attn = CausalSelfAttention(config)
-    self.ln_2 = LayerNorm(config.n_embd, eps=config.norm_eps)
-    self.mlp = MLP(config)
+    self.ln_1 = LayerNorm(n_embd, eps=norm_eps)
+    self.attn = CausalSelfAttention(n_embd, n_head, n_ctx)
+    self.ln_2 = LayerNorm(n_embd, eps=norm_eps)
+    self.mlp = MLP(n_embd)
 
   def forward(self, x: Tensor):
     x = x + self.attn(self.ln_1(x))
@@ -75,16 +77,15 @@ class Block(nn.Module):
 
 
 class Transformer(nn.Module):
-  def __init__(self, config: GPTConfig):
+  def __init__(self, n_embd: int, n_head: int, n_ctx: int, norm_eps: int, vocab_size: int, n_layer: int, **_):
     super().__init__()
-    self.config = config
     self.transformer = nn.ModuleDict(dict(
-        wte = Embedding(config.vocab_size, config.n_embd),
-        wpe = Embedding(config.n_ctx, config.n_embd),
-        h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
-        ln_f = LayerNorm(config.n_embd, eps=config.norm_eps),
+      wte = Embedding(vocab_size, n_embd),
+      wpe = Embedding(n_ctx, n_embd),
+      h = nn.ModuleList([Block(n_embd, n_head, n_ctx, norm_eps) for _ in range(n_layer)]),
+      ln_f = LayerNorm(n_embd, eps=norm_eps),
     ))
-    self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
+    self.lm_head = nn.Linear(n_embd, vocab_size, bias=False)
     self.apply_weight_sharing()
     print("number of parameters: %.2fM" % (self.get_num_params()/1e6,))
 
