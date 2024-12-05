@@ -17,7 +17,7 @@ class GPTConfig:
 
 
 class CausalSelfAttention(nn.Module):
-  def __init__(self, n_embd: int, n_head: int, n_ctx: int, **_):
+  def __init__(self, n_embd: int, n_head: int, n_ctx: int):
     super().__init__()
     assert n_embd % n_head == 0
     self.n_head, self.n_embd, self.head_size = n_head, n_embd, n_embd // n_head
@@ -52,7 +52,7 @@ class CausalSelfAttention(nn.Module):
     return y
 
 class MLP(nn.Module):
-  def __init__(self, n_embd: int, **_):
+  def __init__(self, n_embd: int):
     super().__init__()
     self.c_fc = Linear(n_embd, n_embd * 4)
     self.c_proj = Linear(4 * n_embd, n_embd)
@@ -63,7 +63,7 @@ class MLP(nn.Module):
 
 
 class Block(nn.Module):
-  def __init__(self, n_embd: int, n_head: int, n_ctx: int, norm_eps: int, **_):
+  def __init__(self, n_embd: int, n_head: int, n_ctx: int, norm_eps: float):
     super().__init__()
     self.ln_1 = LayerNorm(n_embd, eps=norm_eps)
     self.attn = CausalSelfAttention(n_embd, n_head, n_ctx)
@@ -77,7 +77,7 @@ class Block(nn.Module):
 
 
 class Transformer(nn.Module):
-  def __init__(self, n_embd: int, n_head: int, n_ctx: int, norm_eps: int, vocab_size: int, n_layer: int, **_):
+  def __init__(self, n_embd: int, n_head: int, n_ctx: int, norm_eps: float, vocab_size: int, n_layer: int, **_):
     super().__init__()
     self.transformer = nn.ModuleDict(dict(
       wte = Embedding(vocab_size, n_embd),

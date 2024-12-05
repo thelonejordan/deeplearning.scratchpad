@@ -3,7 +3,7 @@ from typing import List, cast
 import torch
 from torch import Tensor
 from torch.nn import functional as F
-from models.gpt2.load import from_pretrained
+from models.gpt2.load import build
 
 from models.gpt2.tokenizer import Tokenizer
 from models.gpt2.transformer import Transformer, GPTConfig
@@ -22,7 +22,7 @@ class GPT2:
 
   @staticmethod
   def from_pretrained(model_desc: str='gpt2'):
-    model, tokenizer, config = from_pretrained(model_desc)
+    model, tokenizer, config = build(model_desc)
     return GPT2(model, tokenizer, config)
 
   def text_completion(self, prompts: List[str], max_new_tokens: int,

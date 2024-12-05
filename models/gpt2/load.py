@@ -32,7 +32,7 @@ def _torch_load(checkpoint: str, transposed: Set[str]=set(), skip: Set[str]=set(
   return filtered_state_dict
 
 @timeit(desc="Load time", ms=False)
-def from_pretrained(model_desc: str='gpt2', safetensors: bool=True):
+def build(model_desc: str='gpt2', safetensors: bool=True):
   params = {
     'gpt2':         dict(n_layer=12, n_head=12, n_embd=768),  # 124M params
     'gpt2-medium':  dict(n_layer=24, n_head=16, n_embd=1024), # 350M params
