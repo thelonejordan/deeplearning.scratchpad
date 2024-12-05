@@ -6,14 +6,14 @@ import torch
 import torch.nn.functional as F
 from models.llama.tokenizer import Tokenizer
 from models.llama2.transformer import Transformer
+from models.llama.config import LlamaConfig
 from models.llama2.load import build
 from models.llama.generate import sample_top_p
 
 
 class Llama:
-  def __init__(self, model: Transformer, tokenizer: Tokenizer):
-    self.model = model
-    self.tokenizer = tokenizer
+  def __init__(self, model: Transformer, tokenizer: Tokenizer, config: LlamaConfig):
+    self.model, self.tokenizer, self.config = model, tokenizer, config
 
   @property
   def device(self) -> torch.device: return next(self.model.parameters()).device
@@ -24,8 +24,8 @@ class Llama:
 
   @staticmethod
   def from_pretrained(max_seq_len: int=512, max_batch_size: int=8, model_desc: str='7B', chat: bool=False) -> Llama:
-    model, tokenizer = build(max_seq_len, max_batch_size, model_desc, chat)
-    return Llama(model, tokenizer)
+    model, tokenizer, config = build(max_seq_len, max_batch_size, model_desc, chat)
+    return Llama(model, tokenizer, config)
 
   def text_completion(self, prompts: list[str], temperature: float=0.6, top_p: float=0.9,
                       max_gen_len: Optional[int]=None, logprobs: bool = False, echo: bool = False):
@@ -55,14 +55,15 @@ def generate(generator: Llama, prompt_tokens: List[List[int]], max_gen_len: int,
 
     """
     model, tokenizer = generator.model, generator.tokenizer
-    params, device = model.config, generator.device
+    max_batch_size, max_seq_len = generator.config.max_batch_size, generator.config.max_seq_len
+    device = generator.device
     bsz = len(prompt_tokens)
-    assert bsz <= params.max_batch_size, (bsz, params.max_batch_size)
+    assert bsz <= max_batch_size, (bsz, max_batch_size)
 
     min_prompt_len = min(len(t) for t in prompt_tokens)
     max_prompt_len = max(len(t) for t in prompt_tokens)
-    assert max_prompt_len <= params.max_seq_len
-    total_len = min(params.max_seq_len, max_gen_len + max_prompt_len)
+    assert max_prompt_len <= max_seq_len
+    total_len = min(max_seq_len, max_gen_len + max_prompt_len)
 
     pad_id = tokenizer.pad_id
     tokens = torch.full((bsz, total_len), pad_id, dtype=torch.long, device=device)
@@ -150,10 +151,9 @@ def text_completion(generator: Llama, prompts: List[str], temperature: float = 0
         If logprobs is True, token log probabilities are computed for each generated token.
 
     """
-    model, tokenizer = generator.model, generator.tokenizer
-    params = model.config
+    tokenizer, max_seq_len = generator.tokenizer, generator.config.max_seq_len
     if max_gen_len is None:
-        max_gen_len = params.max_seq_len - 1
+        max_gen_len = max_seq_len - 1
     prompt_tokens = [tokenizer.encode(x, bos=True, eos=False) for x in prompts]
     generation_tokens, generation_logprobs = generate(
       generator=generator,
@@ -179,17 +179,18 @@ def text_completion(generator: Llama, prompts: List[str], temperature: float = 0
 @torch.inference_mode
 def text_completion2(generator: Llama, prompts: List[str], temperature: float=0.6,
                     top_p: float=0.9, max_gen_len: Optional[int]=None):
-  model, tokenizer = generator.model, generator.tokenizer
-  args, device = model.config, generator.device
+  model, tokenizer = generator.model, generator.tokenizer,
+  max_batch_size, max_seq_len = generator.config.max_batch_size, generator.config.max_seq_len
+  device = generator.device
   if max_gen_len is None:
-    max_gen_len = args.max_seq_len - 1
+    max_gen_len = max_seq_len - 1
   prompt_tokens = [tokenizer.encode(prompt, bos=True, eos=False) for prompt in prompts]
   bsz = len(prompt_tokens)
-  assert bsz <= args.max_batch_size, f"batch size must be less than or equal to {args.max_batch_size}"
+  assert bsz <= max_batch_size, f"batch size must be less than or equal to {max_batch_size}"
   min_prompt_len = min(len(prompt) for prompt in prompt_tokens)
   max_prompt_len = max(len(prompt) for prompt in prompt_tokens)
-  assert max_prompt_len <= args.max_seq_len, f"prompt length must be less than or equal to {args.max_seq_len}"
-  total_len = min(args.max_seq_len, max_gen_len + max_prompt_len)
+  assert max_prompt_len <= max_seq_len, f"prompt length must be less than or equal to {max_seq_len}"
+  total_len = min(max_seq_len, max_gen_len + max_prompt_len)
   pad_id = tokenizer.pad_id
   tokens = torch.full((bsz, total_len), pad_id, dtype=torch.long, device=device)
   prev_pos = 0
