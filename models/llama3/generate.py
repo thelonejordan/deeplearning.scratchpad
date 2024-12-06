@@ -5,15 +5,15 @@ import torch
 import torch.nn.functional as F
 from models.llama3.tokenizer import Tokenizer
 from models.llama3.transformer import Transformer
+from models.llama3.config import LlamaConfig
 from models.llama3.load import build
 from models.llama.generate import sample_top_p
 from models.llama2.generate import CompletionPrediction
 
 
 class Llama:
-  def __init__(self, model: Transformer, tokenizer: Tokenizer):
-    self.model = model
-    self.tokenizer = tokenizer
+  def __init__(self, model: Transformer, tokenizer: Tokenizer, config: LlamaConfig):
+    self.model, self.tokenizer, self.config = model, tokenizer, config
 
   @property
   def device(self) -> torch.device: return next(self.model.parameters()).device
@@ -25,8 +25,9 @@ class Llama:
   @staticmethod
   def from_pretrained(max_seq_len: int=512, max_batch_size: int=8,
                       model_desc: str='8B', version: int=0, instruct: bool=False) -> Llama:
-    model, tokenizer = build(max_seq_len, max_batch_size, model_desc=model_desc, version=version, instruct=instruct)
-    return Llama(model, tokenizer)
+    model, tokenizer, config = build(
+      max_seq_len, max_batch_size, model_desc=model_desc, version=version, instruct=instruct)
+    return Llama(model, tokenizer, config)
 
   def text_completion(self, prompts: list[str], temperature: float=0.6, top_p: float=0.9,
                       max_gen_len: Optional[int]=None, logprobs: bool=False, echo: bool=False):
@@ -35,8 +36,8 @@ class Llama:
 
 
 @torch.inference_mode()
-def generate(generator: Llama, prompt_tokens: List[List[int]], max_gen_len: int, temperature: float = 0.6, top_p: float = 0.9,
-            logprobs: bool = False, echo: bool = False) -> Tuple[List[List[int]], Optional[List[List[float]]]]:
+def generate(generator: Llama, prompt_tokens: List[List[int]], max_gen_len: int, temperature: float=0.6, top_p: float=0.9,
+             logprobs: bool = False, echo: bool = False) -> Tuple[List[List[int]], Optional[List[List[float]]]]:
   """
   Generate text sequences based on provided prompts using the language generation model.
 
@@ -55,15 +56,15 @@ def generate(generator: Llama, prompt_tokens: List[List[int]], max_gen_len: int,
     This method uses the provided prompts as a basis for generating text. It employs nucleus sampling to produce text with controlled randomness.
     If logprobs is True, token log probabilities are computed for each generated token.
   """
-  model, tokenizer = generator.model, generator.tokenizer
-  params, device = model.config, generator.device
+  model, tokenizer, device = generator.model, generator.tokenizer, generator.device
+  max_batch_size, max_seq_len = generator.config.max_batch_size, generator.config.max_seq_len
   bsz = len(prompt_tokens)
-  assert bsz <= params.max_batch_size, (bsz, params.max_batch_size)
+  assert bsz <= max_batch_size, (bsz, max_batch_size)
 
   min_prompt_len = min(len(t) for t in prompt_tokens)
   max_prompt_len = max(len(t) for t in prompt_tokens)
-  assert max_prompt_len <= params.max_seq_len
-  total_len = min(params.max_seq_len, max_gen_len + max_prompt_len)
+  assert max_prompt_len <= max_seq_len
+  total_len = min(max_seq_len, max_gen_len + max_prompt_len)
 
   pad_id = tokenizer.pad_id
   tokens = torch.full((bsz, total_len), pad_id, dtype=torch.long, device=device)
@@ -158,10 +159,9 @@ def text_completion(generator: Llama, prompts: List[str], temperature: float=0.6
     This method generates text completions for the provided prompts, employing nucleus sampling to introduce controlled randomness.
     If logprobs is True, token log probabilities are computed for each generated token.
   """
-  model, tokenizer = generator.model, generator.tokenizer
-  params = model.config
+  tokenizer, max_seq_len = generator.tokenizer, generator.config.max_seq_len
   if max_gen_len is None:
-      max_gen_len = params.max_seq_len - 1
+      max_gen_len = max_seq_len - 1
   prompt_tokens = [tokenizer.encode(x, bos=True, eos=False) for x in prompts]
   generation_tokens, generation_logprobs = generate(
       generator=generator,

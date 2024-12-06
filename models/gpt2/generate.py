@@ -1,18 +1,17 @@
-from typing import Optional, List, cast
+from typing import List, cast
 
 import torch
 from torch import Tensor
 from torch.nn import functional as F
-from models.gpt2.load import from_pretrained
+from models.gpt2.load import build
 
 from models.gpt2.tokenizer import Tokenizer
-from models.gpt2.transformer import Transformer
+from models.gpt2.transformer import Transformer, GPTConfig
 
 
 class GPT2:
-  def __init__(self, model: Transformer, tokenizer: Tokenizer):
-    self.model = model
-    self.tokenizer = tokenizer
+  def __init__(self, model: Transformer, tokenizer: Tokenizer, config: GPTConfig):
+    self.model, self.tokenizer, self.config = model, tokenizer, config
 
   @property
   def device(self) -> torch.device: return next(self.model.parameters()).device
@@ -23,8 +22,8 @@ class GPT2:
 
   @staticmethod
   def from_pretrained(model_desc: str='gpt2'):
-    model, tokenizer = from_pretrained(model_desc)
-    return GPT2(model, tokenizer)
+    model, tokenizer, config = build(model_desc)
+    return GPT2(model, tokenizer, config)
 
   def text_completion(self, prompts: List[str], max_new_tokens: int,
                       temperature: float=1.0, top_k: int=0, top_p: float=1.0):
@@ -35,10 +34,10 @@ class GPT2:
 def generate(generator: GPT2, prompt_tokens: List[List[int]], max_new_tokens: int,
              temperature: float=1.0, top_k: int=0, top_p: float=1.0):
   model, tokenizer = generator.model, generator.tokenizer
-  config, device = model.config, generator.device
+  n_ctx, device = generator.config.n_ctx, generator.device
   min_prompt_size = min([len(t) for t in prompt_tokens])
   max_prompt_size = max([len(t) for t in prompt_tokens])
-  total_len = min(config.n_ctx, max_prompt_size + max_new_tokens)
+  total_len = min(n_ctx, max_prompt_size + max_new_tokens)
   batch = torch.full(
     (len(prompt_tokens), total_len), tokenizer.eot_token, dtype=torch.long, device=device)
   mask = torch.ones_like(batch, dtype=torch.long, device=device)
@@ -48,7 +47,7 @@ def generate(generator: GPT2, prompt_tokens: List[List[int]], max_new_tokens: in
   model.eval()
   cur_pos = min_prompt_size
   while cur_pos < total_len:
-    context = batch[:,:cur_pos] if cur_pos<=config.n_ctx else batch[:, -config.n_ctx:]
+    context = batch[:,:cur_pos] if cur_pos<=n_ctx else batch[:, -n_ctx:]
     with torch.no_grad():
       logits: Tensor = model(context)
     if temperature > 0:

@@ -1,4 +1,5 @@
 from pathlib import Path
+from dataclasses import asdict
 from models.helpers import timeit
 from models.llama.tokenizer import Tokenizer
 from models.llama.transformer import Transformer
@@ -32,6 +33,6 @@ def build(max_seq_len: int, max_batch_size: int, model_desc: str='7B'):
   params['vocab_size'] = tokenizer.n_words
   config = LlamaConfig(max_seq_len=max_seq_len, max_batch_size=max_batch_size, **params)
   torch.set_default_dtype(config.torch_dtype)
-  model = Transformer(config)
+  model = Transformer(**asdict(config))
   model.load_state_dict(state_dict, assign=True, strict=True)
-  return model, tokenizer
+  return model, tokenizer, config

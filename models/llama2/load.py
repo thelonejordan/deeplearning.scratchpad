@@ -1,4 +1,5 @@
 from pathlib import Path
+from dataclasses import asdict
 from huggingface_hub import snapshot_download
 import safetensors.torch
 import torch
@@ -34,6 +35,6 @@ def build(max_seq_len: int, max_batch_size: int, model_desc: str='7B', chat: boo
   params['vocab_size'] = tokenizer.n_words
   config = LlamaConfig.build(max_seq_len, max_batch_size, **params)
   torch.set_default_dtype(config.torch_dtype)
-  model = Transformer(config)
+  model = Transformer(**asdict(config))
   model.load_state_dict(state_dict, assign=True, strict=True)
-  return model, tokenizer
+  return model, tokenizer, config

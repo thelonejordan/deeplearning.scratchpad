@@ -5,7 +5,6 @@ import torch
 from torch import Tensor, nn
 from torch.nn import functional as F
 
-from models.llama2.config import LlamaConfig
 from models.llama.transformer import precompute_freqs_cis, apply_rotary_emb
 from models.llama.transformer import RMSNorm, FeedForward
 
@@ -17,17 +16,17 @@ def repeat_kv(x: torch.Tensor, n_rep: int) -> Tensor:
     return x.reshape(bs, seqlen, n_kv_heads * n_rep, head_dim)
 
 class Attention(nn.Module):
-  def __init__(self, config: LlamaConfig):
+  def __init__(self, dim: int, n_heads: int, n_kv_heads: int, head_dim: int, max_batch_size: int, max_seq_len: int):
     super().__init__()
-    self.n_heads, self.n_kv_heads, self.head_dim = config.n_heads, config.n_kv_heads, config.head_dim
-    self.n_rep  = config.n_heads // config.n_kv_heads
-    self.q_proj = nn.Linear(config.dim, self.n_heads * self.head_dim, bias=False)
-    self.k_proj = nn.Linear(config.dim, self.n_kv_heads * self.head_dim, bias=False)
-    self.v_proj = nn.Linear(config.dim, self.n_kv_heads * self.head_dim, bias=False)
-    self.o_proj = nn.Linear(config.n_heads * self.head_dim, config.dim, bias=False)
+    self.n_heads, self.n_kv_heads, self.head_dim = n_heads, n_kv_heads, head_dim
+    self.n_rep  = n_heads // n_kv_heads
+    self.q_proj = nn.Linear(dim, self.n_heads * self.head_dim, bias=False)
+    self.k_proj = nn.Linear(dim, self.n_kv_heads * self.head_dim, bias=False)
+    self.v_proj = nn.Linear(dim, self.n_kv_heads * self.head_dim, bias=False)
+    self.o_proj = nn.Linear(n_heads * self.head_dim, dim, bias=False)
 
-    self.cache_k = torch.zeros(config.max_batch_size, config.max_seq_len, self.n_kv_heads, self.head_dim)
-    self.cache_v = torch.zeros(config.max_batch_size, config.max_seq_len, self.n_kv_heads, self.head_dim)
+    self.cache_k = torch.zeros(max_batch_size, max_seq_len, self.n_kv_heads, self.head_dim)
+    self.cache_v = torch.zeros(max_batch_size, max_seq_len, self.n_kv_heads, self.head_dim)
 
   def forward(self, x: Tensor, start_pos: int, freqs_cis: Tensor, mask: Optional[Tensor]):
     bsz, seqlen, _ = x.shape
@@ -55,24 +54,40 @@ class Attention(nn.Module):
     return output
 
   @staticmethod
-  def _attention(query: Tensor, key: Tensor, value: Tensor, mask: Optional[Tensor], scale: float, use_fused: bool=True):
-    if use_fused:
-      output = F.scaled_dot_product_attention(query, key, value, mask, scale=scale)
-      return output
+  def _attention(query: Tensor, key: Tensor, value: Tensor, mask: Optional[Tensor], scale: float):
     scores = (query @ key.transpose(2, 3)) * scale
     if mask is not None: scores = scores + mask
     scores = F.softmax(scores.float(), dim=-1).type_as(query)
     output = scores @ value
     return output
 
+  @staticmethod
+  def _fused_attention(query: Tensor, key: Tensor, value: Tensor, mask: Optional[Tensor], scale: float):
+    output = F.scaled_dot_product_attention(query, key, value, mask, scale=scale)
+    return output
 
-class TransformerBlock(nn.Module):
-  def __init__(self, config: LlamaConfig):
+class Block(nn.Module):
+  def __init__(self, dim: int, n_heads: int, head_dim: int, hidden_dim: int,
+               max_batch_size: int, max_seq_len: int, norm_eps: float):
     super().__init__()
-    self.input_layernorm = RMSNorm(config.dim, eps=config.norm_eps)
-    self.self_attn = Attention(config)
-    self.post_attention_layernorm = RMSNorm(config.dim, eps=config.norm_eps)
-    self.mlp = FeedForward(config.dim, config.hidden_dim)
+    self.input_layernorm = RMSNorm(dim, eps=norm_eps)
+    self.self_attn = Attention(dim, n_heads, head_dim, max_batch_size, max_seq_len)
+    self.post_attention_layernorm = RMSNorm(dim, eps=norm_eps)
+    self.mlp = FeedForward(dim, hidden_dim)
+
+  def forward(self, x: Tensor, start_pos: int, freqs_cis: Tensor, mask: Optional[Tensor]):
+    x = x + self.self_attn(self.input_layernorm(x), start_pos, freqs_cis, mask)
+    x = x + self.mlp(self.post_attention_layernorm(x))
+    return x
+
+class Block(nn.Module):
+  def __init__(self, dim: int, n_heads: int, n_kv_heads: int, head_dim: int, hidden_dim: int,
+               max_batch_size: int, max_seq_len: int, norm_eps: float):
+    super().__init__()
+    self.input_layernorm = RMSNorm(dim, eps=norm_eps)
+    self.self_attn = Attention(dim, n_heads, n_kv_heads, head_dim, max_batch_size, max_seq_len)
+    self.post_attention_layernorm = RMSNorm(dim, eps=norm_eps)
+    self.mlp = FeedForward(dim, hidden_dim)
 
   def forward(self, x: Tensor, start_pos: int, freqs_cis: Tensor, mask: Optional[Tensor]):
     h = x + self.self_attn(self.input_layernorm(x), start_pos, freqs_cis, mask)
@@ -80,21 +95,23 @@ class TransformerBlock(nn.Module):
     return out
 
 class Transformer(nn.Module):
-  def __init__(self, config: LlamaConfig):
+  def __init__(self, dim: int, n_heads: int, n_kv_heads: int, head_dim: int, hidden_dim: int, n_layers: int,
+               max_batch_size: int, max_seq_len: int, vocab_size: int, norm_eps: float, **_):
     super().__init__()
-    self.config = config
+    self.max_seq_len = max_seq_len
     self.model = nn.ModuleDict(dict(
-      embed_tokens = nn.Embedding(config.vocab_size, config.dim),
-      layers = nn.ModuleList([TransformerBlock(config) for _ in range(config.n_layers)]),
-      norm = RMSNorm(config.dim, eps=config.norm_eps)
+      embed_tokens = nn.Embedding(vocab_size, dim),
+      layers = nn.ModuleList(
+        [Block(dim, n_heads, n_kv_heads, head_dim, hidden_dim, max_batch_size, max_seq_len, norm_eps) for _ in range(n_layers)]),
+      norm = RMSNorm(dim, eps=norm_eps)
     ))
-    self.lm_head = nn.Linear(config.dim, config.vocab_size, bias=False)
-    self.freqs_cis = precompute_freqs_cis(config.head_dim, config.max_seq_len * 2)
+    self.lm_head = nn.Linear(dim, vocab_size, bias=False)
+    self.freqs_cis = precompute_freqs_cis(head_dim, max_seq_len * 2)
     print("number of parameters: %.2fB" % (self.get_num_params()/1e9,))
 
   def forward(self, tokens: Tensor, start_pos: int):
     seqlen = tokens.size(1)
-    assert seqlen <= self.config.max_seq_len
+    assert seqlen <= self.max_seq_len
     device = tokens.device
     h = self.model.embed_tokens(tokens)
     self.freqs_cis = self.freqs_cis.to(device)

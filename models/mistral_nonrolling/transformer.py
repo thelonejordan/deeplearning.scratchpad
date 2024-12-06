@@ -1,5 +1,4 @@
 from typing import  Optional
-from dataclasses import dataclass
 
 import torch
 from torch import nn, Tensor
@@ -7,29 +6,7 @@ import torch.nn.functional as F
 
 from models.mistral_rolling.transformer import precompute_freqs_cis, apply_rotary_emb, repeat_kv
 from models.mistral_rolling.transformer import RMSNorm, FeedForward
-
-
-DEFAULT_FLOAT = torch.bfloat16
-torch.set_default_dtype(DEFAULT_FLOAT)
-
-@dataclass
-class MistralConfig:
-  dim: int
-  n_layers: int
-  head_dim: int
-  hidden_dim: int
-  n_heads: int
-  n_kv_heads: int
-  norm_eps: float
-  vocab_size: int
-  sliding_window: int
-
-  # For rotary embeddings. If not set, will be infered
-  rope_theta: Optional[float] = None
-
-  max_seq_len: int = 16384
-  max_batch_size: int = 0
-
+from models.mistral_rolling.config import MistralConfig
 
 class Attention(nn.Module):
   def __init__(self, config: MistralConfig):
@@ -41,8 +18,8 @@ class Attention(nn.Module):
     self.wv = nn.Linear(config.dim, config.n_kv_heads * config.head_dim, bias=False)
     self.wo = nn.Linear(config.n_heads * config.head_dim, config.dim, bias=False)
     cache_size = (config.max_batch_size, config.max_seq_len, self.n_kv_heads, self.head_dim)
-    self.cache_k = torch.zeros(cache_size, dtype=DEFAULT_FLOAT)
-    self.cache_v = torch.zeros(cache_size, dtype=DEFAULT_FLOAT)
+    self.cache_k = torch.zeros(cache_size, dtype=self.wq.weight.dtype)
+    self.cache_v = torch.zeros(cache_size, dtype=self.wq.weight.dtype)
 
   def forward(self, x: Tensor, freqs_cis: Tensor, positions: Tensor, mask: Optional[Tensor]) -> Tensor:
     bsz, seqlen, _ = x.shape
@@ -68,14 +45,16 @@ class Attention(nn.Module):
     return self.wo(output)
 
   @staticmethod
-  def _attention(query: Tensor, key: Tensor, value: Tensor, mask: Optional[Tensor], scale: float, use_fused: bool=False):
-    if use_fused:
-      output = F.scaled_dot_product_attention(query, key, value, mask, scale=scale)
-      return output
+  def _attention(query: Tensor, key: Tensor, value: Tensor, mask: Optional[Tensor], scale: float):
     scores = torch.matmul(query, key.transpose(2, 3)) * scale # scores : [bsz, n_heads, seqlen | 1, seqlen]
     if mask is not None: scores += mask[None, None, ...]
     scores = F.softmax(scores.float(), dim=-1).type_as(query)
     output = torch.matmul(scores, value)  # (bs, n_local_heads, slen, head_dim)
+    return output
+
+  @staticmethod
+  def _fused_attention(query: Tensor, key: Tensor, value: Tensor, mask: Optional[Tensor], scale: float):
+    output = F.scaled_dot_product_attention(query, key, value, mask, scale=scale)
     return output
 
 
@@ -102,8 +81,7 @@ class Transformer(nn.Module):
     self.layers = nn.ModuleList([TransformerBlock(config=config) for _ in range(config.n_layers)])
     self.norm = RMSNorm(config.dim, eps=config.norm_eps)
     self.output = nn.Linear(config.dim, config.vocab_size, bias=False)
-    theta = config.rope_theta or 1000000.0
-    self.freqs_cis = precompute_freqs_cis(config.head_dim, 128_000, theta)
+    self.freqs_cis = precompute_freqs_cis(config.head_dim, 128_000, config.rope_theta)
 
   def forward(self, input_ids: Tensor, positions: Tensor):
     seqlen = input_ids.size(1)

@@ -2,12 +2,12 @@
 
 # https://github.com/mistralai/mistral-inference/blob/147c4e68279b90eb61b19bdea44e16f5539d5a5d/one_file_ref.py
 
-from typing import Optional, List
+from typing import List
 
 import torch
 from models.mistral_rolling.transformer import Transformer
 from models.mistral_rolling.tokenizer import Tokenizer
-from models.mistral_rolling.load import from_pretrained
+from models.mistral_rolling.load import build
 from models.mistral_rolling.generate import generate
 
 class Mistral:
@@ -25,8 +25,8 @@ class Mistral:
     return self
 
   @staticmethod
-  def from_pretrained(folder: str, max_batch_size: int=1, device: Optional[torch.device]=None, dtype: Optional[torch.dtype]=None):
-    model, tokenizer = from_pretrained(folder, max_batch_size, device, dtype)
+  def from_pretrained(folder: str, max_batch_size: int=2):
+    model, tokenizer = build(folder, max_batch_size)
     return Mistral(model, tokenizer)
 
   @torch.no_grad()
@@ -40,7 +40,7 @@ if __name__ == "__main__":
   set_seed(device)
 
   model_path = "downloads/mistral-7B-v0.1"
-  model = Mistral.from_pretrained(model_path, max_batch_size=3, device=device)
+  model = Mistral.from_pretrained(model_path, max_batch_size=4).to(device)
 
   max_tokens: int = 35
   context = [

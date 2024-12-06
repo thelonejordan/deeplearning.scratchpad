@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from dataclasses import asdict
 from models.helpers import timeit
 from models.llama3.tokenizer import Tokenizer
 from models.llama3.transformer import Transformer
@@ -47,7 +48,7 @@ def build(max_seq_len: int, max_batch_size: int, seed: int=1,
   assert config.vocab_size == tokenizer.n_words, f"{config.vocab_size=} != {tokenizer.n_words=}"
   state_dict = (_safetensors_load if safetensors else _torch_load)(repo_id)
   torch.set_default_dtype(config.torch_dtype)
-  model = Transformer(config)
+  model = Transformer(**asdict(config))
   model.load_state_dict(state_dict, assign=True, strict=False)
   if version == 2: model = model.apply_weight_sharing()
-  return model, tokenizer
+  return model, tokenizer, config

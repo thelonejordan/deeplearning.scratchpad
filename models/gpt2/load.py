@@ -1,5 +1,6 @@
 from typing import Set
 from pathlib import Path
+from dataclasses import asdict
 from models.helpers import timeit
 
 import torch
@@ -31,7 +32,7 @@ def _torch_load(checkpoint: str, transposed: Set[str]=set(), skip: Set[str]=set(
   return filtered_state_dict
 
 @timeit(desc="Load time", ms=False)
-def from_pretrained(model_desc: str='gpt2', safetensors: bool=True):
+def build(model_desc: str='gpt2', safetensors: bool=True):
   params = {
     'gpt2':         dict(n_layer=12, n_head=12, n_embd=768),  # 124M params
     'gpt2-medium':  dict(n_layer=24, n_head=16, n_embd=1024), # 350M params
@@ -44,6 +45,7 @@ def from_pretrained(model_desc: str='gpt2', safetensors: bool=True):
   state_dict = loader(model_desc, transposed, skip)
   tokenizer = Tokenizer()
   params['vocab_size'] = tokenizer.model.n_vocab
-  model = Transformer(GPTConfig(**params))
+  config = GPTConfig(**params)
+  model = Transformer(**asdict(config))
   model.transformer.load_state_dict(state_dict, assign=True, strict=True)
-  return model.apply_weight_sharing(), tokenizer
+  return model.apply_weight_sharing(), tokenizer, config
