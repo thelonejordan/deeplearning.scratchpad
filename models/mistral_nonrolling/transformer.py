@@ -4,9 +4,10 @@ import torch
 from torch import nn, Tensor
 import torch.nn.functional as F
 
+from models.mistral_nonrolling.config import MistralConfig
 from models.mistral_rolling.transformer import precompute_freqs_cis, apply_rotary_emb, repeat_kv
 from models.mistral_rolling.transformer import RMSNorm, FeedForward
-from models.mistral_rolling.config import MistralConfig
+
 
 class Attention(nn.Module):
   def __init__(self, config: MistralConfig):
@@ -44,21 +45,21 @@ class Attention(nn.Module):
     output = output.transpose(1, 2).contiguous().view(bsz, seqlen, -1)
     return self.wo(output)
 
-  @staticmethod
-  def _attention(query: Tensor, key: Tensor, value: Tensor, mask: Optional[Tensor], scale: float):
-    scores = torch.matmul(query, key.transpose(2, 3)) * scale # scores : [bsz, n_heads, seqlen | 1, seqlen]
+  def _attention(query: Tensor, key: Tensor, value: Tensor, mask: Optional[Tensor], scale: float) -> Tensor:
+    scores = torch.matmul(query, key.transpose(2, 3)) * scale # (bsz, n_heads, seqlen | 1, seqlen)
     if mask is not None: scores += mask[None, None, ...]
-    scores = F.softmax(scores.float(), dim=-1).type_as(query)
+    scores = scores.float()
+    scores = F.softmax(scores, dim=-1).type_as(query)
     output = torch.matmul(scores, value)  # (bs, n_local_heads, slen, head_dim)
     return output
 
   @staticmethod
-  def _fused_attention(query: Tensor, key: Tensor, value: Tensor, mask: Optional[Tensor], scale: float):
+  def _attention(query: Tensor, key: Tensor, value: Tensor, mask: Optional[Tensor], scale: float) -> Tensor:
     output = F.scaled_dot_product_attention(query, key, value, mask, scale=scale)
     return output
 
 
-class TransformerBlock(nn.Module):
+class Block(nn.Module):
   def __init__(self, config: MistralConfig):
     super().__init__()
     self.attention = Attention(config)
@@ -75,13 +76,12 @@ class TransformerBlock(nn.Module):
 class Transformer(nn.Module):
   def __init__(self, config: MistralConfig):
     super().__init__()
-    assert config.vocab_size > 0
     self.config = config
     self.tok_embeddings = nn.Embedding(config.vocab_size, config.dim)
-    self.layers = nn.ModuleList([TransformerBlock(config=config) for _ in range(config.n_layers)])
+    self.layers = nn.ModuleList([Block(config=config) for _ in range(config.n_layers)])
     self.norm = RMSNorm(config.dim, eps=config.norm_eps)
     self.output = nn.Linear(config.dim, config.vocab_size, bias=False)
-    self.freqs_cis = precompute_freqs_cis(config.head_dim, 128_000, config.rope_theta)
+    self.freqs_cis = precompute_freqs_cis(config.head_dim, config.max_pos_embd, config.rope_theta)
 
   def forward(self, input_ids: Tensor, positions: Tensor):
     seqlen = input_ids.size(1)

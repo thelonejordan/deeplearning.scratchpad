@@ -3,7 +3,7 @@ from typing import List
 import torch
 import torch.nn.functional as F
 
-from models.mistral_rolling.tokenizer import Tokenizer
+from models.mistral_nonrolling.tokenizer import Tokenizer
 from models.mistral_nonrolling.transformer import Transformer
 
 @torch.no_grad()
