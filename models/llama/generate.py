@@ -31,8 +31,10 @@ class Llama:
 @torch.inference_mode()
 def generate(generator: Llama, prompt_tokens: List[List[int]],
              max_gen_len: int, temperature: float=0.8, top_p: float=0.95) -> List[List[int]]:
-  model, tokenizer = generator.model, generator.tokenizer
-  max_seq_len, device = generator.config.max_seq_len, generator.device
+  model, tokenizer, device = generator.model, generator.tokenizer, generator.device
+  max_batch_size, max_seq_len = generator.config.max_batch_size, generator.config.max_seq_len
+  bsz = len(prompt_tokens)
+  assert bsz <= max_batch_size, (bsz, max_batch_size)
   min_prompt_size = min([len(t) for t in prompt_tokens])
   max_prompt_size = max([len(t) for t in prompt_tokens])
   total_len = min(max_seq_len, max_gen_len + max_prompt_size)
