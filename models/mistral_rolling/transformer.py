@@ -82,7 +82,7 @@ class Block(nn.Module):
 
 class Transformer(nn.Module):
   def __init__(self, dim: int, head_dim: int, hidden_dim: int, n_heads: int, n_kv_heads: int, sliding_window: int,
-               n_layers: int, vocab_size: int, max_batch_size: int, max_pos_embd: int, norm_eps: float, rope_theta: float, **_):
+               vocab_size: int, n_layers: int, max_context_len: int, max_batch_size: int, norm_eps: float, rope_theta: float, **_):
     super().__init__()
     self.sliding_window = sliding_window
     self.tok_embeddings = nn.Embedding(vocab_size, dim)
@@ -90,7 +90,7 @@ class Transformer(nn.Module):
       [Block(dim, head_dim, hidden_dim, n_heads, n_kv_heads, sliding_window, max_batch_size, norm_eps) for _ in range(n_layers)])
     self.norm = RMSNorm(dim, eps=norm_eps)
     self.output = nn.Linear(dim, vocab_size, bias=False)
-    self.freqs_cis = precompute_freqs_cis(head_dim, max_pos_embd, rope_theta)
+    self.freqs_cis = precompute_freqs_cis(head_dim, max_context_len, rope_theta)
 
   def forward(self, input_ids: Tensor, positions: Tensor):
     seqlen = input_ids.size(1)
