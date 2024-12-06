@@ -4,7 +4,7 @@ import torch
 from torch.nn import functional as F
 
 from models.mistral_rolling.transformer import Transformer
-from models.mistral_rolling.tokenizer import Tokenizer
+from models.mistral_nonrolling.tokenizer import Tokenizer
 
 @torch.no_grad()
 def generate(model: Transformer, tokenizer: Tokenizer, device: torch.device, prompts: List[str], max_tokens: int):

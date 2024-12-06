@@ -1,44 +1,25 @@
-from typing import Optional, Tuple
+from typing import Optional
+
 import torch
 from torch import Tensor, nn
 from torch.nn import functional as F
 
-from models.mistral_rolling.config import MistralConfig
-
-def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0) -> Tensor:
-  freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[: (dim // 2)].float() / dim))
-  t = torch.arange(end, device=freqs.device)  # type: ignore
-  freqs = torch.outer(t, freqs).float()  # type: ignore
-  return torch.polar(torch.ones_like(freqs), freqs)  # complex64
-
-def apply_rotary_emb(xq: Tensor, xk: Tensor, freqs_cis: Tensor) -> Tuple[Tensor, Tensor]:
-  xq_ = torch.view_as_complex(xq.float().reshape(*xq.shape[:-1], -1, 2))
-  xk_ = torch.view_as_complex(xk.float().reshape(*xk.shape[:-1], -1, 2))
-  freqs_cis = freqs_cis[:, None, :]
-  xq_out = torch.view_as_real(xq_ * freqs_cis).flatten(3)
-  xk_out = torch.view_as_real(xk_ * freqs_cis).flatten(3)
-  return xq_out.type_as(xq), xk_out.type_as(xk)
-
-def repeat_kv(keys: Tensor, values: Tensor, repeats: int, dim: int=2) -> Tuple[Tensor, Tensor]:
-  keys = torch.repeat_interleave(keys, repeats=repeats, dim=dim)
-  values = torch.repeat_interleave(values, repeats=repeats, dim=dim)
-  return keys, values
-
+from models.mistral_nonrolling.transformer import precompute_freqs_cis, apply_rotary_emb, repeat_kv
+from models.mistral_nonrolling.transformer import RMSNorm, FeedForward
 
 class Attention(nn.Module):
-  def __init__(self, config: MistralConfig):
+  def __init__(self, dim: int, head_dim: int, n_heads: int, n_kv_heads: int, sliding_window: int, max_batch_size: int):
     super().__init__()
-    self.n_heads, self.head_dim, self.n_kv_heads = config.n_heads, config.head_dim, config.n_kv_heads
-    self.sliding_window = config.sliding_window
+    self.n_heads, self.head_dim, self.n_kv_heads = n_heads, head_dim, n_kv_heads
+    self.sliding_window = sliding_window
     self.repeats = self.n_heads // self.n_kv_heads
-    self.scale = config.head_dim**-0.5
+    self.scale = head_dim**-0.5
 
-    self.wq = nn.Linear(config.dim, config.n_heads * config.head_dim, bias=False)
-    self.wk = nn.Linear(config.dim, config.n_kv_heads * config.head_dim, bias=False)
-    self.wv = nn.Linear(config.dim, config.n_kv_heads * config.head_dim, bias=False)
-    self.wo = nn.Linear(config.n_heads * config.head_dim, config.dim, bias=False)
-
-    cache_size = (config.max_batch_size, config.sliding_window, self.n_kv_heads, config.head_dim)
+    self.wq = nn.Linear(dim, n_heads * head_dim, bias=False)
+    self.wk = nn.Linear(dim, n_kv_heads * head_dim, bias=False)
+    self.wv = nn.Linear(dim, n_kv_heads * head_dim, bias=False)
+    self.wo = nn.Linear(n_heads * head_dim, dim, bias=False)
+    cache_size = (max_batch_size, sliding_window, self.n_kv_heads, head_dim)
     self.cache_k = torch.empty(cache_size, dtype=self.wq.weight.dtype)
     self.cache_v = torch.empty(cache_size, dtype=self.wq.weight.dtype)
 
@@ -84,38 +65,14 @@ class Attention(nn.Module):
     return output
 
 
-class FeedForward(nn.Module):
-  def __init__(self, dim: int, hidden_dim: int):
+class Block(nn.Module):
+  def __init__(self, dim: int, head_dim: int, hidden_dim: int, n_heads: int, n_kv_heads: int, sliding_window: int,
+               max_batch_size: int, norm_eps: float):
     super().__init__()
-    self.w1 = nn.Linear(dim, hidden_dim, bias=False)
-    self.w2 = nn.Linear(hidden_dim, dim, bias=False)
-    self.w3 = nn.Linear(dim, hidden_dim, bias=False)
-
-  def forward(self, x: Tensor) -> Tensor:
-    return self.w2(F.silu(self.w1(x)) * self.w3(x))
-
-
-class RMSNorm(nn.Module):
-  def __init__(self, dim: int, eps: float=1e-6):
-    super().__init__()
-    self.eps = eps
-    self.weight = nn.Parameter(torch.ones(dim))
-
-  def _norm(self, x: Tensor):
-    return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
-
-  def forward(self, x: Tensor):
-    output = self._norm(x.float()).type_as(x)
-    return output * self.weight
-
-
-class TransformerBlock(nn.Module):
-  def __init__(self, config: MistralConfig):
-    super().__init__()
-    self.attention = Attention(config)
-    self.feed_forward = FeedForward(config.dim, config.hidden_dim)
-    self.attention_norm = RMSNorm(config.dim, eps=config.norm_eps)
-    self.ffn_norm = RMSNorm(config.dim, eps=config.norm_eps)
+    self.attention = Attention(dim, head_dim, n_heads, n_kv_heads, sliding_window, max_batch_size)
+    self.feed_forward = FeedForward(dim, hidden_dim)
+    self.attention_norm = RMSNorm(dim, eps=norm_eps)
+    self.ffn_norm = RMSNorm(dim, eps=norm_eps)
 
   def forward(self, x: Tensor, freqs_cis: Tensor, positions: Tensor, mask: Optional[Tensor]) -> Tensor:
     x = x + self.attention.forward(self.attention_norm(x), freqs_cis, positions, mask)
@@ -124,15 +81,16 @@ class TransformerBlock(nn.Module):
 
 
 class Transformer(nn.Module):
-  def __init__(self, config: MistralConfig):
+  def __init__(self, dim: int, head_dim: int, hidden_dim: int, n_heads: int, n_kv_heads: int, sliding_window: int,
+               vocab_size: int, n_layers: int, max_context_len: int, max_batch_size: int, norm_eps: float, rope_theta: float, **_):
     super().__init__()
-    assert config.vocab_size > 0
-    self.config = config
-    self.tok_embeddings = nn.Embedding(config.vocab_size, config.dim)
-    self.layers = nn.ModuleList([TransformerBlock(config=config) for _ in range(config.n_layers)])
-    self.norm = RMSNorm(config.dim, eps=config.norm_eps)
-    self.output = nn.Linear(config.dim, config.vocab_size, bias=False)
-    self.freqs_cis = precompute_freqs_cis(config.head_dim, 128_000, config.rope_theta)
+    self.sliding_window = sliding_window
+    self.tok_embeddings = nn.Embedding(vocab_size, dim)
+    self.layers = nn.ModuleList(
+      [Block(dim, head_dim, hidden_dim, n_heads, n_kv_heads, sliding_window, max_batch_size, norm_eps) for _ in range(n_layers)])
+    self.norm = RMSNorm(dim, eps=norm_eps)
+    self.output = nn.Linear(dim, vocab_size, bias=False)
+    self.freqs_cis = precompute_freqs_cis(head_dim, max_context_len, rope_theta)
 
   def forward(self, input_ids: Tensor, positions: Tensor):
     seqlen = input_ids.size(1)
@@ -144,7 +102,7 @@ class Transformer(nn.Module):
       tensor = torch.full((seqlen, seqlen),dtype=h.dtype, fill_value=1, device=h.device,)
       mask = torch.tril(tensor, diagonal=0).to(h.dtype)
       # make the mask banded to account for sliding window
-      mask = torch.triu(mask, diagonal=-self.config.sliding_window)
+      mask = torch.triu(mask, diagonal=-self.sliding_window)
       mask = torch.log(mask)
     for layer in self.layers: h = layer(h, freqs_cis, positions, mask)
     return self.output(self.norm(h)).float()

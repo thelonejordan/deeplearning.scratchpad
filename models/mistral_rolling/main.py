@@ -3,17 +3,19 @@
 # https://github.com/mistralai/mistral-inference/blob/147c4e68279b90eb61b19bdea44e16f5539d5a5d/one_file_ref.py
 
 from typing import List
-
 import torch
-from models.mistral_rolling.transformer import Transformer
-from models.mistral_rolling.tokenizer import Tokenizer
+
+from models.helpers import timeit
 from models.mistral_rolling.load import build
 from models.mistral_rolling.generate import generate
+from models.mistral_nonrolling.config import MistralConfig
+from models.mistral_rolling.transformer import Transformer
+from models.mistral_nonrolling.tokenizer import Tokenizer
+
 
 class Mistral:
-  def __init__(self, model: Transformer, tokenizer: Tokenizer):
-    self.model = model
-    self.tokenizer = tokenizer
+  def __init__(self, model: Transformer, tokenizer: Tokenizer, config: MistralConfig):
+    self.model, self.tokenizer, self.config = model, tokenizer, config
 
   @property
   def device(self) -> torch.device: return next(self.model.parameters()).device
@@ -25,9 +27,10 @@ class Mistral:
     return self
 
   @staticmethod
-  def from_pretrained(folder: str, max_batch_size: int=2):
-    model, tokenizer = build(folder, max_batch_size)
-    return Mistral(model, tokenizer)
+  @timeit(desc="Load time", ms=False)
+  def from_pretrained(folder: str, max_seq_len: int, max_batch_size: int, device: torch.device):
+    model, tokenizer, config = build(folder, max_seq_len, max_batch_size)
+    return Mistral(model, tokenizer, config).to(device)
 
   @torch.no_grad()
   def generate(self, prompts: List[str], max_tokens: int):
@@ -40,9 +43,9 @@ if __name__ == "__main__":
   set_seed(device)
 
   model_path = "downloads/mistral-7B-v0.1"
-  model = Mistral.from_pretrained(model_path, max_batch_size=4).to(device)
+  model = Mistral.from_pretrained(model_path, max_seq_len=36, max_batch_size=4, device=device)
 
-  max_tokens: int = 35
+  max_tokens: int = 36
   context = [
     "Quantum computing is",
     "Simply put, the theory of relativity states that",
