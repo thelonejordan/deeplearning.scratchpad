@@ -1,7 +1,8 @@
 import pathlib, json, torch
-import safetensors.torch
+from dataclasses import asdict
 
-from models.mistral_nonrolling.transformer import Transformer, MistralConfig
+from models.mistral_nonrolling.config import MistralConfig
+from models.mistral_nonrolling.transformer import Transformer
 from models.mistral_nonrolling.tokenizer import Tokenizer
 
 def _torch_load(folder: str):
@@ -15,9 +16,9 @@ def build(folder: str, max_seq_len: int, max_batch_size: int):
   with open(pathlib.Path(folder) / "params.json", "r") as f:
     config = MistralConfig.build(max_seq_len, max_batch_size, **json.load(f))
   torch.set_default_dtype(config.torch_dtype)
-  model = Transformer(config)
+  model = Transformer(**asdict(config))
   model.load_state_dict(state_dict, assign=True, strict=True)
   tok_path = pathlib.Path(folder) / "tokenizer.model"
   assert tok_path.exists(), tok_path
   tokenizer = Tokenizer(tok_path.as_posix())
-  return model, tokenizer
+  return model, tokenizer, config

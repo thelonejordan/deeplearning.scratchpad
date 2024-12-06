@@ -4,8 +4,6 @@ import torch
 from torch import nn, Tensor
 import torch.nn.functional as F
 
-from models.mistral_nonrolling.config import MistralConfig
-
 
 def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0) -> Tensor:
   freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[: (dim // 2)].float() / dim))
@@ -28,15 +26,15 @@ def repeat_kv(keys: Tensor, values: Tensor, repeats: int, dim: int=2) -> Tuple[T
 
 
 class Attention(nn.Module):
-  def __init__(self, config: MistralConfig):
+  def __init__(self, dim: int, head_dim: int, n_heads: int, n_kv_heads: int, max_seq_len: int, max_batch_size: int):
     super().__init__()
-    self.head_dim, self.n_heads, self.n_kv_heads = config.head_dim, config.n_heads, config.n_kv_heads
+    self.head_dim, self.n_heads, self.n_kv_heads = head_dim, n_heads, n_kv_heads
     self.repeats = self.n_heads // self.n_kv_heads
-    self.wq = nn.Linear(config.dim, config.n_heads * config.head_dim, bias=False)
-    self.wk = nn.Linear(config.dim, config.n_kv_heads * config.head_dim, bias=False)
-    self.wv = nn.Linear(config.dim, config.n_kv_heads * config.head_dim, bias=False)
-    self.wo = nn.Linear(config.n_heads * config.head_dim, config.dim, bias=False)
-    cache_size = (config.max_batch_size, config.max_seq_len, self.n_kv_heads, self.head_dim)
+    self.wq = nn.Linear(dim, n_heads * head_dim, bias=False)
+    self.wk = nn.Linear(dim, n_kv_heads * head_dim, bias=False)
+    self.wv = nn.Linear(dim, n_kv_heads * head_dim, bias=False)
+    self.wo = nn.Linear(n_heads * head_dim, dim, bias=False)
+    cache_size = (max_batch_size, max_seq_len, self.n_kv_heads, self.head_dim)
     self.cache_k = torch.zeros(cache_size, dtype=self.wq.weight.dtype)
     self.cache_v = torch.zeros(cache_size, dtype=self.wq.weight.dtype)
 
@@ -104,12 +102,13 @@ class RMSNorm(nn.Module):
 
 
 class Block(nn.Module):
-  def __init__(self, config: MistralConfig):
+  def __init__(self, dim: int, head_dim: int, hidden_dim: int, n_heads: int, n_kv_heads: int,
+               max_seq_len: int, max_batch_size: int, norm_eps: float):
     super().__init__()
-    self.attention = Attention(config)
-    self.feed_forward = FeedForward(config.dim, config.hidden_dim)
-    self.attention_norm = RMSNorm(config.dim, eps=config.norm_eps)
-    self.ffn_norm = RMSNorm(config.dim, eps=config.norm_eps)
+    self.attention = Attention(dim, head_dim, n_heads, n_kv_heads, max_seq_len, max_batch_size)
+    self.feed_forward = FeedForward(dim, hidden_dim)
+    self.attention_norm = RMSNorm(dim, eps=norm_eps)
+    self.ffn_norm = RMSNorm(dim, eps=norm_eps)
 
   def forward(self, x: Tensor, freqs_cis: Tensor, positions: Tensor, mask: Optional[Tensor]) -> Tensor:
     x = x + self.attention(self.attention_norm(x), freqs_cis, positions, mask)
@@ -118,14 +117,16 @@ class Block(nn.Module):
 
 
 class Transformer(nn.Module):
-  def __init__(self, config: MistralConfig):
+  def __init__(self, dim: int, head_dim: int, hidden_dim: int, n_heads: int, n_kv_heads: int, vocab_size: int, n_layers: int,
+               max_pos_embd: int, max_seq_len: int, max_batch_size: int, norm_eps: float, rope_theta: float, **_):
     super().__init__()
-    self.config = config
-    self.tok_embeddings = nn.Embedding(config.vocab_size, config.dim)
-    self.layers = nn.ModuleList([Block(config=config) for _ in range(config.n_layers)])
-    self.norm = RMSNorm(config.dim, eps=config.norm_eps)
-    self.output = nn.Linear(config.dim, config.vocab_size, bias=False)
-    self.freqs_cis = precompute_freqs_cis(config.head_dim, config.max_pos_embd, config.rope_theta)
+    self.max_seq_len = max_seq_len
+    self.tok_embeddings = nn.Embedding(vocab_size, dim)
+    self.layers = nn.ModuleList(
+      [Block(dim, head_dim, hidden_dim, n_heads, n_kv_heads, max_seq_len, max_batch_size, norm_eps) for _ in range(n_layers)])
+    self.norm = RMSNorm(dim, eps=norm_eps)
+    self.output = nn.Linear(dim, vocab_size, bias=False)
+    self.freqs_cis = precompute_freqs_cis(head_dim, max_pos_embd, rope_theta)
 
   def forward(self, input_ids: Tensor, positions: Tensor):
     seqlen = input_ids.size(1)
@@ -136,7 +137,7 @@ class Transformer(nn.Module):
     if seqlen > 1:
       base = torch.full((seqlen, seqlen), fill_value=1, dtype=h.dtype, device=h.device)
       mask = torch.tril(base, diagonal=0).type_as(h)
-      mask = torch.triu(mask, diagonal=-self.config.max_seq_len)
+      mask = torch.triu(mask, diagonal=-self.max_seq_len)
       mask = torch.log(mask)
     for layer in self.layers: h = layer(h, freqs_cis, positions, mask)
     return self.output(self.norm(h)).float()
