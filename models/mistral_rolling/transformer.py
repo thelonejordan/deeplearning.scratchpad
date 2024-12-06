@@ -1,28 +1,11 @@
-from typing import Optional, Tuple
+from typing import Optional
+
 import torch
 from torch import Tensor, nn
 from torch.nn import functional as F
 
-from models.mistral_rolling.config import MistralConfig
-
-def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0) -> Tensor:
-  freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[: (dim // 2)].float() / dim))
-  t = torch.arange(end, device=freqs.device)  # type: ignore
-  freqs = torch.outer(t, freqs).float()  # type: ignore
-  return torch.polar(torch.ones_like(freqs), freqs)  # complex64
-
-def apply_rotary_emb(xq: Tensor, xk: Tensor, freqs_cis: Tensor) -> Tuple[Tensor, Tensor]:
-  xq_ = torch.view_as_complex(xq.float().reshape(*xq.shape[:-1], -1, 2))
-  xk_ = torch.view_as_complex(xk.float().reshape(*xk.shape[:-1], -1, 2))
-  freqs_cis = freqs_cis[:, None, :]
-  xq_out = torch.view_as_real(xq_ * freqs_cis).flatten(3)
-  xk_out = torch.view_as_real(xk_ * freqs_cis).flatten(3)
-  return xq_out.type_as(xq), xk_out.type_as(xk)
-
-def repeat_kv(keys: Tensor, values: Tensor, repeats: int, dim: int=2) -> Tuple[Tensor, Tensor]:
-  keys = torch.repeat_interleave(keys, repeats=repeats, dim=dim)
-  values = torch.repeat_interleave(values, repeats=repeats, dim=dim)
-  return keys, values
+from models.mistral_nonrolling.config import MistralConfig
+from models.mistral_nonrolling.transformer import precompute_freqs_cis, apply_rotary_emb, repeat_kv
 
 
 class Attention(nn.Module):
@@ -37,7 +20,6 @@ class Attention(nn.Module):
     self.wk = nn.Linear(config.dim, config.n_kv_heads * config.head_dim, bias=False)
     self.wv = nn.Linear(config.dim, config.n_kv_heads * config.head_dim, bias=False)
     self.wo = nn.Linear(config.n_heads * config.head_dim, config.dim, bias=False)
-
     cache_size = (config.max_batch_size, config.sliding_window, self.n_kv_heads, config.head_dim)
     self.cache_k = torch.empty(cache_size, dtype=self.wq.weight.dtype)
     self.cache_v = torch.empty(cache_size, dtype=self.wq.weight.dtype)
@@ -109,7 +91,7 @@ class RMSNorm(nn.Module):
     return output * self.weight
 
 
-class TransformerBlock(nn.Module):
+class Block(nn.Module):
   def __init__(self, config: MistralConfig):
     super().__init__()
     self.attention = Attention(config)
@@ -126,13 +108,12 @@ class TransformerBlock(nn.Module):
 class Transformer(nn.Module):
   def __init__(self, config: MistralConfig):
     super().__init__()
-    assert config.vocab_size > 0
     self.config = config
     self.tok_embeddings = nn.Embedding(config.vocab_size, config.dim)
-    self.layers = nn.ModuleList([TransformerBlock(config=config) for _ in range(config.n_layers)])
+    self.layers = nn.ModuleList([Block(config=config) for _ in range(config.n_layers)])
     self.norm = RMSNorm(config.dim, eps=config.norm_eps)
     self.output = nn.Linear(config.dim, config.vocab_size, bias=False)
-    self.freqs_cis = precompute_freqs_cis(config.head_dim, 128_000, config.rope_theta)
+    self.freqs_cis = precompute_freqs_cis(config.head_dim, config.max_pos_embd, config.rope_theta)
 
   def forward(self, input_ids: Tensor, positions: Tensor):
     seqlen = input_ids.size(1)
