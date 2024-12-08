@@ -4,6 +4,8 @@ import torch
 from torch import nn, Tensor
 import torch.nn.functional as F
 
+from models.llama.transformer import _fused_attention
+
 
 def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0) -> Tensor:
   freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[: (dim // 2)].float() / dim))
@@ -31,10 +33,6 @@ def _attention(query: Tensor, key: Tensor, value: Tensor, mask: Optional[Tensor]
   scores = scores.float()
   scores = F.softmax(scores, dim=-1).type_as(query)
   output = torch.matmul(scores, value)  # (bs, n_local_heads, slen, head_dim)
-  return output
-
-def _fused_attention(query: Tensor, key: Tensor, value: Tensor, mask: Optional[Tensor], scale: float) -> Tensor:
-  output = F.scaled_dot_product_attention(query, key, value, mask, scale=scale)
   return output
 
 
@@ -70,7 +68,7 @@ class Attention(nn.Module):
       cur_pos = positions[-1].item() + 1
       key, value = repeat_kv(self.cache_k[:bsz, :cur_pos, ...], self.cache_v[:bsz, :cur_pos, ...], self.repeats)
     query, key, value = xq.transpose(1, 2), key.transpose(1, 2), value.transpose(1, 2)
-    output = _attention(query, key, value, mask, self.head_dim**-0.5)
+    output = _fused_attention(query, key, value, mask, self.head_dim**-0.5)
     output = output.transpose(1, 2).contiguous().view(bsz, seqlen, -1)
     return self.wo(output)
 

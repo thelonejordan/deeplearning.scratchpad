@@ -3,9 +3,9 @@ import math
 
 import torch
 from torch import Tensor, nn
-from torch.nn import functional as F
 
 from models.llama.transformer import precompute_freqs_cis, apply_rotary_emb
+from models.llama.transformer import _fused_attention
 from models.llama.transformer import RMSNorm, FeedForward
 
 # n_rep > 1 aka n_kv_heads != n_heads implies MQA [arxiv/2307.09288, A.2.1]
@@ -47,38 +47,12 @@ class Attention(nn.Module):
     keys = repeat_kv(keys, self.n_rep) # (bs, seqlen, n_local_heads, head_dim)
     values = repeat_kv(values, self.n_rep) # (bs, seqlen, n_local_heads, head_dim)
     xq, keys, values = xq.transpose(1, 2), keys.transpose(1, 2), values.transpose(1, 2)
-    output = self._attention(xq, keys, values, mask, 1.0/math.sqrt(self.head_dim))
+    output = _fused_attention(xq, keys, values, mask, 1.0/math.sqrt(self.head_dim))
 
     output = output.transpose(1, 2).contiguous().view(bsz, seqlen, -1)
     output = self.o_proj(output)
     return output
 
-  @staticmethod
-  def _attention(query: Tensor, key: Tensor, value: Tensor, mask: Optional[Tensor], scale: float):
-    scores = (query @ key.transpose(2, 3)) * scale
-    if mask is not None: scores = scores + mask
-    scores = F.softmax(scores.float(), dim=-1).type_as(query)
-    output = scores @ value
-    return output
-
-  @staticmethod
-  def _fused_attention(query: Tensor, key: Tensor, value: Tensor, mask: Optional[Tensor], scale: float):
-    output = F.scaled_dot_product_attention(query, key, value, mask, scale=scale)
-    return output
-
-class Block(nn.Module):
-  def __init__(self, dim: int, n_heads: int, head_dim: int, hidden_dim: int,
-               max_batch_size: int, max_seq_len: int, norm_eps: float):
-    super().__init__()
-    self.input_layernorm = RMSNorm(dim, eps=norm_eps)
-    self.self_attn = Attention(dim, n_heads, head_dim, max_batch_size, max_seq_len)
-    self.post_attention_layernorm = RMSNorm(dim, eps=norm_eps)
-    self.mlp = FeedForward(dim, hidden_dim)
-
-  def forward(self, x: Tensor, start_pos: int, freqs_cis: Tensor, mask: Optional[Tensor]):
-    x = x + self.self_attn(self.input_layernorm(x), start_pos, freqs_cis, mask)
-    x = x + self.mlp(self.post_attention_layernorm(x))
-    return x
 
 class Block(nn.Module):
   def __init__(self, dim: int, n_heads: int, n_kv_heads: int, head_dim: int, hidden_dim: int,
@@ -93,6 +67,7 @@ class Block(nn.Module):
     h = x + self.self_attn(self.input_layernorm(x), start_pos, freqs_cis, mask)
     out = h + self.mlp(self.post_attention_layernorm(h))
     return out
+
 
 class Transformer(nn.Module):
   def __init__(self, dim: int, n_heads: int, n_kv_heads: int, head_dim: int, hidden_dim: int, n_layers: int,

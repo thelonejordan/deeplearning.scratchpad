@@ -25,6 +25,18 @@ def apply_rotary_emb(xq: Tensor, xk: Tensor, freqs_cis: Tensor) -> Tuple[Tensor,
   return xq_out.type_as(xq), xk_out.type_as(xk)
 
 
+def _attention(query: Tensor, key: Tensor, value: Tensor, mask: Optional[Tensor], scale: float):
+  scores = (query @ key.transpose(2, 3)) * scale
+  if mask is not None: scores = scores + mask
+  scores = F.softmax(scores.float(), dim=-1).type_as(query)
+  output = scores @ value
+  return output
+
+def _fused_attention(query: Tensor, key: Tensor, value: Tensor, mask: Optional[Tensor], scale: float):
+  output = F.scaled_dot_product_attention(query, key, value, mask, scale=scale)
+  return output
+
+
 class RMSNorm(nn.Module):
   def __init__(self, dim: int, eps: float=1e-6):
     super().__init__()
@@ -67,23 +79,10 @@ class Attention(nn.Module):
     keys = self.cache_k[:bsz, : start_pos + seqlen]
     values = self.cache_v[:bsz, : start_pos + seqlen]
     xq, keys, values = xq.transpose(1, 2), keys.transpose(1, 2), values.transpose(1, 2)
-    output = self._attention(xq, keys, values, mask, 1.0/math.sqrt(self.head_dim))
+    output = _fused_attention(xq, keys, values, mask, 1.0/math.sqrt(self.head_dim))
 
     output = output.transpose(1, 2).contiguous().view(bsz, seqlen, -1)
     output = self.o_proj(output)
-    return output
-
-  @staticmethod
-  def _attention(query: Tensor, key: Tensor, value: Tensor, mask: Optional[Tensor], scale: float):
-    scores = (query @ key.transpose(2, 3)) * scale
-    if mask is not None: scores = scores + mask
-    scores = F.softmax(scores.float(), dim=-1).type_as(query)
-    output = scores @ value
-    return output
-
-  @staticmethod
-  def _fused_attention(query: Tensor, key: Tensor, value: Tensor, mask: Optional[Tensor], scale: float):
-    output = F.scaled_dot_product_attention(query, key, value, mask, scale=scale)
     return output
 
 

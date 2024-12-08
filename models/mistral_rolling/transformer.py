@@ -5,7 +5,7 @@ from torch import Tensor, nn
 from torch.nn import functional as F
 
 from models.mistral_nonrolling.transformer import precompute_freqs_cis, apply_rotary_emb, repeat_kv
-from models.mistral_nonrolling.transformer import _attention
+from models.llama.transformer import _fused_attention
 from models.mistral_nonrolling.transformer import RMSNorm, FeedForward
 
 class Attention(nn.Module):
@@ -47,7 +47,7 @@ class Attention(nn.Module):
       key, value = repeat_kv(self.cache_k[:bsz, :cur_pos, ...], self.cache_v[:bsz, :cur_pos, ...], self.repeats)
 
     query, key, value = xq.transpose(1, 2), key.transpose(1, 2), value.transpose(1, 2)
-    output = _attention(query, key, value, mask, self.scale)
+    output = _fused_attention(query, key, value, mask, self.scale)
     output = output.transpose(1, 2).contiguous().view(bsz, seqlen, -1)
     return self.wo(output)
 
