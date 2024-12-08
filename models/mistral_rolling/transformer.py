@@ -2,11 +2,11 @@ from typing import Optional
 
 import torch
 from torch import Tensor, nn
-from torch.nn import functional as F
 
-from models.mistral_nonrolling.transformer import precompute_freqs_cis, apply_rotary_emb, repeat_kv
 from models.llama.transformer import _fused_attention
-from models.mistral_nonrolling.transformer import RMSNorm, FeedForward
+from models.llama.transformer import RMSNorm
+from models.mistral_nonrolling.transformer import precompute_freqs_cis, apply_rotary_emb, repeat_kv
+from models.mistral_nonrolling.transformer import FeedForward
 
 class Attention(nn.Module):
   def __init__(self, dim: int, head_dim: int, n_heads: int, n_kv_heads: int, sliding_window: int, max_batch_size: int):
