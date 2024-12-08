@@ -16,6 +16,19 @@ class GPTConfig:
   norm_eps: float = 1e-5
 
 
+def _attention(q: Tensor, k: Tensor, v: Tensor, mask: Tensor, scale: float) -> Tensor:
+  mask = mask.to(q.device)
+  att = (q @ k.transpose(-2, -1)) * scale # (B, H, T, T)
+  att = att.masked_fill(mask < 0.5, -float('inf')) # causal mask
+  y = F.softmax(att, dim=-1) @ v # (B, H, T, T) x (B, H, T, C') -> (B, H, T, C')
+  return y
+
+def _fused_attention(q: Tensor, k: Tensor, v: Tensor, mask: Tensor, scale: float) -> Tensor:
+  mask = mask.to(q.device)
+  y = F.scaled_dot_product_attention(q, k, v, mask > 0.5, scale=scale) # flash attention
+  return y
+
+
 class CausalSelfAttention(nn.Module):
   def __init__(self, n_embd: int, n_head: int, n_ctx: int):
     super().__init__()
@@ -32,24 +45,11 @@ class CausalSelfAttention(nn.Module):
     q = q.view(B, T, self.n_head, self.head_size).transpose(1, 2) # (B, H, T, C')
     k = k.view(B, T, self.n_head, self.head_size).transpose(1, 2) # (B, H, T, C')
     v = v.view(B, T, self.n_head, self.head_size).transpose(1, 2) # (B, H, T, C')
-    y = self._attention(q, k, v, self.bias[:,:,:T,:T], (1.0 / math.sqrt(self.head_size))) # (B, H, T, C')
+    y = _fused_attention(q, k, v, self.bias[:,:,:T,:T], (1.0 / math.sqrt(self.head_size))) # (B, H, T, C')
     y = y.transpose(1, 2).contiguous().view(B, T, C)
     y = self.c_proj(y)
     return y
 
-  @staticmethod
-  def _attention(q: Tensor, k: Tensor, v: Tensor, mask: Tensor, scale: float) -> Tensor:
-    mask = mask.to(q.device)
-    att = (q @ k.transpose(-2, -1)) * scale # (B, H, T, T)
-    att = att.masked_fill(mask < 0.5, -float('inf')) # causal mask
-    y = F.softmax(att, dim=-1) @ v # (B, H, T, T) x (B, H, T, C') -> (B, H, T, C')
-    return y
-
-  @staticmethod
-  def _fused_attention(q: Tensor, k: Tensor, v: Tensor, mask: Tensor, scale: float) -> Tensor:
-    mask = mask.to(q.device)
-    y = F.scaled_dot_product_attention(q, k, v, mask > 0.5, scale=scale) # flash attention
-    return y
 
 class MLP(nn.Module):
   def __init__(self, n_embd: int):

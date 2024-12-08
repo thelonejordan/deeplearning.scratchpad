@@ -4,6 +4,9 @@ import torch
 from torch import nn, Tensor
 import torch.nn.functional as F
 
+from models.llama.transformer import _fused_attention
+from models.llama.transformer import RMSNorm
+
 
 def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0) -> Tensor:
   freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[: (dim // 2)].float() / dim))
@@ -23,6 +26,15 @@ def repeat_kv(keys: Tensor, values: Tensor, repeats: int, dim: int=2) -> Tuple[T
   keys = torch.repeat_interleave(keys, repeats=repeats, dim=dim)
   values = torch.repeat_interleave(values, repeats=repeats, dim=dim)
   return keys, values
+
+
+def _attention(query: Tensor, key: Tensor, value: Tensor, mask: Optional[Tensor], scale: float) -> Tensor:
+  scores = torch.matmul(query, key.transpose(2, 3)) * scale # (bsz, n_heads, seqlen | 1, seqlen)
+  if mask is not None: scores += mask[None, None, ...]
+  scores = scores.float()
+  scores = F.softmax(scores, dim=-1).type_as(query)
+  output = torch.matmul(scores, value)  # (bs, n_local_heads, slen, head_dim)
+  return output
 
 
 class Attention(nn.Module):
@@ -57,23 +69,9 @@ class Attention(nn.Module):
       cur_pos = positions[-1].item() + 1
       key, value = repeat_kv(self.cache_k[:bsz, :cur_pos, ...], self.cache_v[:bsz, :cur_pos, ...], self.repeats)
     query, key, value = xq.transpose(1, 2), key.transpose(1, 2), value.transpose(1, 2)
-    output = self._attention(query, key, value, mask, self.head_dim**-0.5)
+    output = _fused_attention(query, key, value, mask, self.head_dim**-0.5)
     output = output.transpose(1, 2).contiguous().view(bsz, seqlen, -1)
     return self.wo(output)
-
-  @staticmethod
-  def _attention(query: Tensor, key: Tensor, value: Tensor, mask: Optional[Tensor], scale: float) -> Tensor:
-    scores = torch.matmul(query, key.transpose(2, 3)) * scale # (bsz, n_heads, seqlen | 1, seqlen)
-    if mask is not None: scores += mask[None, None, ...]
-    scores = scores.float()
-    scores = F.softmax(scores, dim=-1).type_as(query)
-    output = torch.matmul(scores, value)  # (bs, n_local_heads, slen, head_dim)
-    return output
-
-  @staticmethod
-  def _attention(query: Tensor, key: Tensor, value: Tensor, mask: Optional[Tensor], scale: float) -> Tensor:
-    output = F.scaled_dot_product_attention(query, key, value, mask, scale=scale)
-    return output
 
 
 class FeedForward(nn.Module):
@@ -85,20 +83,6 @@ class FeedForward(nn.Module):
 
   def forward(self, x: Tensor) -> Tensor:
     return self.w2(F.silu(self.w1(x)) * self.w3(x))
-
-
-class RMSNorm(nn.Module):
-  def __init__(self, dim: int, eps: float=1e-6):
-    super().__init__()
-    self.eps = eps
-    self.weight = nn.Parameter(torch.ones(dim))
-
-  def _norm(self, x: Tensor):
-    return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
-
-  def forward(self, x: Tensor):
-    output = self._norm(x.float()).type_as(x)
-    return output * self.weight
 
 
 class Block(nn.Module):
