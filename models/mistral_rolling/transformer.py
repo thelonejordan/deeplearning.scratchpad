@@ -5,6 +5,7 @@ from torch import Tensor, nn
 from torch.nn import functional as F
 
 from models.mistral_nonrolling.transformer import precompute_freqs_cis, apply_rotary_emb, repeat_kv
+from models.mistral_nonrolling.transformer import _attention
 from models.mistral_nonrolling.transformer import RMSNorm, FeedForward
 
 class Attention(nn.Module):
@@ -46,23 +47,9 @@ class Attention(nn.Module):
       key, value = repeat_kv(self.cache_k[:bsz, :cur_pos, ...], self.cache_v[:bsz, :cur_pos, ...], self.repeats)
 
     query, key, value = xq.transpose(1, 2), key.transpose(1, 2), value.transpose(1, 2)
-    output = self._attention(query, key, value, mask, self.scale)
+    output = _attention(query, key, value, mask, self.scale)
     output = output.transpose(1, 2).contiguous().view(bsz, seqlen, -1)
     return self.wo(output)
-
-  @staticmethod
-  def _attention(query: Tensor, key: Tensor, value: Tensor, mask: Optional[Tensor], scale: float) -> Tensor:
-    scores = torch.matmul(query, key.transpose(2, 3)) * scale # (bsz, n_heads, seqlen | 1, seqlen)
-    if mask is not None: scores += mask[None, None, ...]
-    scores = scores.float()
-    scores = F.softmax(scores, dim=-1).type_as(query)
-    output = torch.matmul(scores, value)  # (bs, n_local_heads, slen, head_dim)
-    return output
-
-  @staticmethod
-  def _attention(query: Tensor, key: Tensor, value: Tensor, mask: Optional[Tensor], scale: float) -> Tensor:
-    output = F.scaled_dot_product_attention(query, key, value, mask, scale=scale)
-    return output
 
 
 class Block(nn.Module):

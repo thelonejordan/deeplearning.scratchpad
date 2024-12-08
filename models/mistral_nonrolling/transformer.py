@@ -25,6 +25,19 @@ def repeat_kv(keys: Tensor, values: Tensor, repeats: int, dim: int=2) -> Tuple[T
   return keys, values
 
 
+def _attention(query: Tensor, key: Tensor, value: Tensor, mask: Optional[Tensor], scale: float) -> Tensor:
+  scores = torch.matmul(query, key.transpose(2, 3)) * scale # (bsz, n_heads, seqlen | 1, seqlen)
+  if mask is not None: scores += mask[None, None, ...]
+  scores = scores.float()
+  scores = F.softmax(scores, dim=-1).type_as(query)
+  output = torch.matmul(scores, value)  # (bs, n_local_heads, slen, head_dim)
+  return output
+
+def _fused_attention(query: Tensor, key: Tensor, value: Tensor, mask: Optional[Tensor], scale: float) -> Tensor:
+  output = F.scaled_dot_product_attention(query, key, value, mask, scale=scale)
+  return output
+
+
 class Attention(nn.Module):
   def __init__(self, dim: int, head_dim: int, n_heads: int, n_kv_heads: int, max_seq_len: int, max_batch_size: int):
     super().__init__()
@@ -57,23 +70,9 @@ class Attention(nn.Module):
       cur_pos = positions[-1].item() + 1
       key, value = repeat_kv(self.cache_k[:bsz, :cur_pos, ...], self.cache_v[:bsz, :cur_pos, ...], self.repeats)
     query, key, value = xq.transpose(1, 2), key.transpose(1, 2), value.transpose(1, 2)
-    output = self._attention(query, key, value, mask, self.head_dim**-0.5)
+    output = _attention(query, key, value, mask, self.head_dim**-0.5)
     output = output.transpose(1, 2).contiguous().view(bsz, seqlen, -1)
     return self.wo(output)
-
-  @staticmethod
-  def _attention(query: Tensor, key: Tensor, value: Tensor, mask: Optional[Tensor], scale: float) -> Tensor:
-    scores = torch.matmul(query, key.transpose(2, 3)) * scale # (bsz, n_heads, seqlen | 1, seqlen)
-    if mask is not None: scores += mask[None, None, ...]
-    scores = scores.float()
-    scores = F.softmax(scores, dim=-1).type_as(query)
-    output = torch.matmul(scores, value)  # (bs, n_local_heads, slen, head_dim)
-    return output
-
-  @staticmethod
-  def _attention(query: Tensor, key: Tensor, value: Tensor, mask: Optional[Tensor], scale: float) -> Tensor:
-    output = F.scaled_dot_product_attention(query, key, value, mask, scale=scale)
-    return output
 
 
 class FeedForward(nn.Module):
