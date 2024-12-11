@@ -4,13 +4,13 @@ from tqdm import tqdm
 import torch
 from torch import Tensor
 
-from models.helpers import timeit
+from models.helpers import Generator, timeit
 from models.llama.transformer import Transformer
 from models.llama.tokenizer import Tokenizer
 from models.llama.config import LlamaConfig
 from models.llama.load import build
 
-class Llama:
+class Llama(Generator):
   def __init__(self, model: Transformer, tokenizer: Tokenizer, config: LlamaConfig):
     self.model, self.tokenizer, self.config = model, tokenizer, config
 

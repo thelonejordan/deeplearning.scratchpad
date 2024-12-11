@@ -4,7 +4,7 @@ from typing import Optional, List, Tuple
 import torch
 import torch.nn.functional as F
 
-from models.helpers import timeit
+from models.helpers import Generator, timeit
 from models.llama3.tokenizer import Tokenizer
 from models.llama3.transformer import Transformer
 from models.llama3.config import LlamaConfig
@@ -13,16 +13,9 @@ from models.llama.generate import sample_top_p
 from models.llama2.generate import CompletionPrediction
 
 
-class Llama:
+class Llama(Generator):
   def __init__(self, model: Transformer, tokenizer: Tokenizer, config: LlamaConfig):
     self.model, self.tokenizer, self.config = model, tokenizer, config
-
-  @property
-  def device(self) -> torch.device: return next(self.model.parameters()).device
-
-  def to(self, device: torch.device):
-    self.model = self.model.to(device)
-    return self
 
   @staticmethod
   @timeit(desc="Load time", ms=False)

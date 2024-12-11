@@ -3,25 +3,16 @@ from typing import List
 import torch
 import torch.nn.functional as F
 
-from models.helpers import timeit
+from models.helpers import Generator, timeit
 from models.mistral_nonrolling.config import MistralConfig
 from models.mistral_nonrolling.tokenizer import Tokenizer
 from models.mistral_nonrolling.transformer import Transformer
 from models.mistral_nonrolling.load import build
 
 
-class Mistral:
+class Mistral(Generator):
   def __init__(self, model: Transformer, tokenizer: Tokenizer, config: MistralConfig):
     self.model, self.tokenizer, self.config = model, tokenizer, config
-
-  @property
-  def device(self) -> torch.device: return next(self.model.parameters()).device
-  @property
-  def dtype(self) -> torch.dtype: return next(self.model.parameters()).dtype
-
-  def to(self, device: torch.device):
-    self.model = self.model.to(device)
-    return self
 
   @staticmethod
   @timeit(desc="Load time", ms=False)

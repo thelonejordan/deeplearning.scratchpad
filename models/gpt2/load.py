@@ -7,7 +7,8 @@ import torch
 import safetensors.torch
 from huggingface_hub import snapshot_download
 
-from models.gpt2.transformer import Transformer, GPTConfig
+from models.gpt2.config import GPTConfig
+from models.gpt2.transformer import Transformer
 from models.gpt2.tokenizer import Tokenizer
 
 def _safetensors_load(repo_id: str, transposed: Set[str]=set(), skip: Set[str]=set()):
