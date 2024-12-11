@@ -4,6 +4,8 @@ from tqdm import tqdm
 
 import torch
 import torch.nn.functional as F
+
+from models.helpers import timeit
 from models.llama.tokenizer import Tokenizer
 from models.llama2.transformer import Transformer
 from models.llama.config import LlamaConfig
@@ -23,6 +25,7 @@ class Llama:
     return self
 
   @staticmethod
+  @timeit(desc="Load time", ms=False)
   def from_pretrained(max_seq_len: int=512, max_batch_size: int=8, model_desc: str='7B', chat: bool=False) -> Llama:
     model, tokenizer, config = build(max_seq_len, max_batch_size, model_desc, chat)
     return Llama(model, tokenizer, config)

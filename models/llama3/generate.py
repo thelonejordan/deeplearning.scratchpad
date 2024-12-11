@@ -3,6 +3,8 @@ from typing import Optional, List, Tuple
 
 import torch
 import torch.nn.functional as F
+
+from models.helpers import timeit
 from models.llama3.tokenizer import Tokenizer
 from models.llama3.transformer import Transformer
 from models.llama3.config import LlamaConfig
@@ -23,6 +25,7 @@ class Llama:
     return self
 
   @staticmethod
+  @timeit(desc="Load time", ms=False)
   def from_pretrained(max_seq_len: int=512, max_batch_size: int=8,
                       model_desc: str='8B', version: int=0, instruct: bool=False) -> Llama:
     model, tokenizer, config = build(

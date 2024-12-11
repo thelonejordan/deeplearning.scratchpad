@@ -31,7 +31,6 @@ def _torch_load(checkpoint: str, transposed: Set[str]=set(), skip: Set[str]=set(
     filtered_state_dict[k] = v.t() if any(k.endswith(w) for w in transposed) else v
   return filtered_state_dict
 
-@timeit(desc="Load time", ms=False)
 def build(model_desc: str='gpt2', safetensors: bool=True):
   params = {
     'gpt2':         dict(n_layer=12, n_head=12, n_embd=768),  # 124M params
