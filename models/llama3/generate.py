@@ -33,7 +33,7 @@ class Llama(Generator):
 
 @torch.inference_mode()
 def generate(generator: Llama, prompt_tokens: List[List[int]], max_gen_len: int, temperature: float=0.6, top_p: float=0.9,
-             logprobs: bool = False, echo: bool = False) -> Tuple[List[List[int]], Optional[List[List[float]]]]:
+             logprobs: bool=False, echo: bool=False) -> Tuple[List[List[int]], Optional[List[List[float]]]]:
   """
   Generate text sequences based on provided prompts using the language generation model.
 
@@ -65,9 +65,9 @@ def generate(generator: Llama, prompt_tokens: List[List[int]], max_gen_len: int,
   pad_id = tokenizer.pad_id
   tokens = torch.full((bsz, total_len), pad_id, dtype=torch.long, device=device)
   for k, t in enumerate(prompt_tokens):
-      tokens[k, : len(t)] = torch.tensor(t, dtype=torch.long, device=device)
+    tokens[k, : len(t)] = torch.tensor(t, dtype=torch.long, device=device)
   if logprobs:
-      token_logprobs = torch.zeros_like(tokens, dtype=torch.float)
+    token_logprobs = torch.zeros_like(tokens, dtype=torch.float)
 
   prev_pos = 0
   eos_reached = torch.tensor([False] * bsz, device=device)
