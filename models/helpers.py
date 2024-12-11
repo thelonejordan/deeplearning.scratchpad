@@ -2,6 +2,7 @@ from typing import Optional
 from time import perf_counter
 from functools import partial
 import os, torch
+from torch import nn
 
 def timer(func, desc, ms):
   desc = "Time elapsed" if desc is None else desc
@@ -36,3 +37,13 @@ def set_seed(device: Optional[torch.device]=None, seed: Optional[int]=None):
   torch.manual_seed(seed)
   if device.type == 'cuda': torch.cuda.manual_seed(seed)
   if device.type == 'mps': torch.mps.manual_seed(seed)
+
+
+class Generator:
+  @property
+  def device(self) -> torch.device: return next(self.model.parameters()).device
+  @property
+  def dtype(self) -> torch.dtype: return next(self.model.parameters()).dtype
+  def to(self, device: torch.device):
+    self.model = self.model.to(device)
+    return self
