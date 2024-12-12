@@ -1,6 +1,5 @@
 from pathlib import Path
 from dataclasses import asdict
-from models.helpers import timeit
 from models.llama.tokenizer import Tokenizer
 from models.llama.transformer import Transformer
 from models.llama.config import LlamaConfig
@@ -18,7 +17,6 @@ def _safetensors_load(repo_id: str):
   tokenizer_path = f"{ckpt_dir}/tokenizer.model"
   return state_dict, tokenizer_path
 
-@timeit(desc="Load time", ms=False)
 def build(max_seq_len: int, max_batch_size: int, model_desc: str='7B'):
   assert model_desc in ('7B', '13B', '30B', '65B'), f'invalid model_desc: {model_desc}'
   params = {

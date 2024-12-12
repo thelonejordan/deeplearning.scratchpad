@@ -1,4 +1,4 @@
-# PYTHONPATH=. python3 models/llama3/main.py
+# CPU=1 PYTHONPATH=. python3 models/llama3/main.py
 
 # https://github.com/meta-llama/llama3/blob/main/llama/model.py
 
@@ -9,7 +9,7 @@ from models.helpers import set_device, set_seed
 
 def main():
 
-  device = set_device('cpu') # hardcode, as MPS OOMs
+  device = set_device()
   set_seed(device)
 
   model = Llama.from_pretrained(max_batch_size=2, model_desc='8B', version=1).to(device)

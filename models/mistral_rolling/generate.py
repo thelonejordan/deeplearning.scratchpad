@@ -3,8 +3,27 @@ from typing import List
 import torch
 from torch.nn import functional as F
 
+from models.helpers import Generator, timeit
+from models.mistral_rolling.load import build
+from models.mistral_nonrolling.config import MistralConfig
 from models.mistral_rolling.transformer import Transformer
 from models.mistral_nonrolling.tokenizer import Tokenizer
+
+
+class Mistral(Generator):
+  def __init__(self, model: Transformer, tokenizer: Tokenizer, config: MistralConfig):
+    self.model, self.tokenizer, self.config = model, tokenizer, config
+
+  @staticmethod
+  @timeit(desc="Load time", ms=False)
+  def from_pretrained(folder: str, max_seq_len: int, max_batch_size: int, device: torch.device):
+    model, tokenizer, config = build(folder, max_seq_len, max_batch_size)
+    return Mistral(model, tokenizer, config).to(device)
+
+  @torch.no_grad()
+  def generate(self, prompts: List[str], max_tokens: int):
+    return generate(self.model, self.tokenizer, self.device, prompts, max_tokens)
+
 
 @torch.no_grad()
 def generate(model: Transformer, tokenizer: Tokenizer, device: torch.device, prompts: List[str], max_tokens: int):

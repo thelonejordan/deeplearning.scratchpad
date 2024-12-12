@@ -3,7 +3,6 @@ from dataclasses import asdict
 from huggingface_hub import snapshot_download
 import safetensors.torch
 import torch
-from models.helpers import timeit
 from models.llama.tokenizer import Tokenizer
 from models.llama2.transformer import Transformer
 from models.llama2.config import LlamaConfig
@@ -19,7 +18,6 @@ def _safetensors_load(repo_id: str):
   tokenizer_path = f"{ckpt_dir}/tokenizer.model"
   return state_dict, tokenizer_path
 
-@timeit(desc="Load time", ms=False)
 def build(max_seq_len: int, max_batch_size: int, model_desc: str='7B', chat: bool=False, safetensors: bool=True):
   # TODO: support safetensors=False
   assert model_desc in ('7B', '13B', '70B'), f'invalid model_type: {model_desc}'

@@ -111,6 +111,7 @@ class Transformer(nn.Module):
     self.norm = RMSNorm(dim, eps=norm_eps)
     self.output = nn.Linear(dim, vocab_size, bias=False)
     self.freqs_cis = precompute_freqs_cis(head_dim, max_context_len, rope_theta)
+    print("number of parameters: %.2fB" % (self.get_num_params()/1e9,))
 
   def forward(self, input_ids: Tensor, positions: Tensor):
     seqlen = input_ids.size(1)
@@ -125,3 +126,8 @@ class Transformer(nn.Module):
       mask = torch.log(mask)
     for layer in self.layers: h = layer(h, freqs_cis, positions, mask)
     return self.output(self.norm(h)).float()
+
+  def get_num_params(self, non_embedding=True):
+    n_params = sum(p.numel() for p in self.parameters())
+    if non_embedding: n_params -= self.tok_embeddings.weight.numel()
+    return n_params
