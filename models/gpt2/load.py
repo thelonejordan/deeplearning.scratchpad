@@ -1,7 +1,6 @@
 from typing import Set
 from pathlib import Path
 from dataclasses import asdict
-from models.helpers import timeit
 
 import torch
 import safetensors.torch

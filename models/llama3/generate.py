@@ -30,7 +30,6 @@ class Llama(Generator):
     return text_completion(self, prompts, temperature, top_p, max_gen_len, logprobs, echo)
 
 
-
 @torch.inference_mode()
 def generate(generator: Llama, prompt_tokens: List[List[int]], max_gen_len: int, temperature: float=0.6, top_p: float=0.9,
              logprobs: bool=False, echo: bool=False) -> Tuple[List[List[int]], Optional[List[List[float]]]]:

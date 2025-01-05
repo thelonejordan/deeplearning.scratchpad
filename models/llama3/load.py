@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 from dataclasses import asdict
-from models.helpers import timeit
+
 from models.llama3.tokenizer import Tokenizer
 from models.llama3.transformer import Transformer
 from models.llama3.config import LlamaConfig

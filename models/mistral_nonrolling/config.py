@@ -25,7 +25,7 @@ class MistralConfig:
     assert self.vocab_size > 0
 
   @staticmethod
-  def build(max_seq_len: int, max_batch_size: int, **params):
+  def build(max_seq_len: int, max_batch_size: int, **params) -> MistralConfig:
     config = MistralConfig(max_seq_len=max_seq_len, max_batch_size=max_batch_size, **params)
     assert config.max_seq_len <= config.max_context_len, (config.max_seq_len, config.max_context_len)
     return config

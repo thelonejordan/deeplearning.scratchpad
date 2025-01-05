@@ -2,8 +2,6 @@
 
 # https://github.com/meta-llama/llama3/blob/main/llama/model.py
 
-from __future__ import annotations
-
 from models.llama3.generate import Llama
 from models.helpers import set_device, set_seed
 
