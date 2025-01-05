@@ -10,7 +10,7 @@ def main():
   device = set_device()
   set_seed(device)
 
-  model = Llama.from_pretrained(max_batch_size=2, model_desc='8B', version=1).to(device)
+  model = Llama.from_pretrained(max_batch_size=2, model_desc='3B', version=2).to(device)
 
   prompts = [
     "Simply put, the theory of relativity states that",
