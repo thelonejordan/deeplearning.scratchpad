@@ -1,4 +1,4 @@
-# PYTHONPATH=. python3 models/llama/main.py
+# CPU=1 PYTHONPATH=. python3 models/llama/main.py
 
 # https://arxiv.org/abs/2302.13971
 # https://ai.meta.com/blog/large-language-model-llama-meta-ai/
@@ -11,7 +11,7 @@ from models.llama.generate import Llama
 
 def main():
 
-  device = set_device('cpu') # hardcode, as MPS OOMs
+  device = set_device()
   set_seed(device)
 
   model = Llama.from_pretrained(max_batch_size=4).to(device)

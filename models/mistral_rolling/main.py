@@ -2,43 +2,12 @@
 
 # https://github.com/mistralai/mistral-inference/blob/147c4e68279b90eb61b19bdea44e16f5539d5a5d/one_file_ref.py
 
-from typing import List
-import torch
-
-from models.helpers import timeit
-from models.mistral_rolling.load import build
-from models.mistral_rolling.generate import generate
-from models.mistral_nonrolling.config import MistralConfig
-from models.mistral_rolling.transformer import Transformer
-from models.mistral_nonrolling.tokenizer import Tokenizer
+from models.helpers import set_device, set_seed
+from models.mistral_rolling.generate import Mistral
 
 
-class Mistral:
-  def __init__(self, model: Transformer, tokenizer: Tokenizer, config: MistralConfig):
-    self.model, self.tokenizer, self.config = model, tokenizer, config
+def main():
 
-  @property
-  def device(self) -> torch.device: return next(self.model.parameters()).device
-  @property
-  def dtype(self) -> torch.dtype: return next(self.model.parameters()).dtype
-
-  def to(self, device: torch.device):
-    self.model = self.model.to(device)
-    return self
-
-  @staticmethod
-  @timeit(desc="Load time", ms=False)
-  def from_pretrained(folder: str, max_seq_len: int, max_batch_size: int, device: torch.device):
-    model, tokenizer, config = build(folder, max_seq_len, max_batch_size)
-    return Mistral(model, tokenizer, config).to(device)
-
-  @torch.no_grad()
-  def generate(self, prompts: List[str], max_tokens: int):
-    return generate(self.model, self.tokenizer, self.device, prompts, max_tokens)
-
-
-if __name__ == "__main__":
-  from models.helpers import set_device, set_seed
   device = set_device()
   set_seed(device)
 
@@ -56,3 +25,7 @@ if __name__ == "__main__":
   for x in res:
     print(x)
     print('-' * 50)
+
+
+if __name__ == "__main__":
+  main()

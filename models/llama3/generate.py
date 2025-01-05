@@ -3,6 +3,8 @@ from typing import Optional, List, Tuple
 
 import torch
 import torch.nn.functional as F
+
+from models.helpers import Generator, timeit
 from models.llama3.tokenizer import Tokenizer
 from models.llama3.transformer import Transformer
 from models.llama3.config import LlamaConfig
@@ -11,18 +13,12 @@ from models.llama.generate import sample_top_p
 from models.llama2.generate import CompletionPrediction
 
 
-class Llama:
+class Llama(Generator):
   def __init__(self, model: Transformer, tokenizer: Tokenizer, config: LlamaConfig):
     self.model, self.tokenizer, self.config = model, tokenizer, config
 
-  @property
-  def device(self) -> torch.device: return next(self.model.parameters()).device
-
-  def to(self, device: torch.device):
-    self.model = self.model.to(device)
-    return self
-
   @staticmethod
+  @timeit(desc="Load time", ms=False)
   def from_pretrained(max_seq_len: int=512, max_batch_size: int=8,
                       model_desc: str='8B', version: int=0, instruct: bool=False) -> Llama:
     model, tokenizer, config = build(
@@ -34,10 +30,9 @@ class Llama:
     return text_completion(self, prompts, temperature, top_p, max_gen_len, logprobs, echo)
 
 
-
 @torch.inference_mode()
 def generate(generator: Llama, prompt_tokens: List[List[int]], max_gen_len: int, temperature: float=0.6, top_p: float=0.9,
-             logprobs: bool = False, echo: bool = False) -> Tuple[List[List[int]], Optional[List[List[float]]]]:
+             logprobs: bool=False, echo: bool=False) -> Tuple[List[List[int]], Optional[List[List[float]]]]:
   """
   Generate text sequences based on provided prompts using the language generation model.
 
@@ -69,9 +64,9 @@ def generate(generator: Llama, prompt_tokens: List[List[int]], max_gen_len: int,
   pad_id = tokenizer.pad_id
   tokens = torch.full((bsz, total_len), pad_id, dtype=torch.long, device=device)
   for k, t in enumerate(prompt_tokens):
-      tokens[k, : len(t)] = torch.tensor(t, dtype=torch.long, device=device)
+    tokens[k, : len(t)] = torch.tensor(t, dtype=torch.long, device=device)
   if logprobs:
-      token_logprobs = torch.zeros_like(tokens, dtype=torch.float)
+    token_logprobs = torch.zeros_like(tokens, dtype=torch.float)
 
   prev_pos = 0
   eos_reached = torch.tensor([False] * bsz, device=device)

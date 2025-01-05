@@ -1,13 +1,16 @@
 from typing import List
 from tqdm import tqdm
+
 import torch
 from torch import Tensor
+
+from models.helpers import Generator, timeit
 from models.llama.transformer import Transformer
 from models.llama.tokenizer import Tokenizer
 from models.llama.config import LlamaConfig
 from models.llama.load import build
 
-class Llama:
+class Llama(Generator):
   def __init__(self, model: Transformer, tokenizer: Tokenizer, config: LlamaConfig):
     self.model, self.tokenizer, self.config = model, tokenizer, config
 
@@ -19,6 +22,7 @@ class Llama:
     return self
 
   @staticmethod
+  @timeit(desc="Load time", ms=False)
   def from_pretrained(max_seq_len: int=512, max_batch_size: int=8, model_desc: str='7B'):
     model, tokenizer, config = build(max_seq_len, max_batch_size, model_desc)
     return Llama(model, tokenizer, config)

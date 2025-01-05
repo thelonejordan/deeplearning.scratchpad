@@ -3,24 +3,20 @@ from typing import List, cast
 import torch
 from torch import Tensor
 from torch.nn import functional as F
+
+from models.helpers import Generator, timeit
 from models.gpt2.load import build
-
+from models.gpt2.config import GPTConfig
 from models.gpt2.tokenizer import Tokenizer
-from models.gpt2.transformer import Transformer, GPTConfig
+from models.gpt2.transformer import Transformer
 
 
-class GPT2:
+class GPT2(Generator):
   def __init__(self, model: Transformer, tokenizer: Tokenizer, config: GPTConfig):
     self.model, self.tokenizer, self.config = model, tokenizer, config
 
-  @property
-  def device(self) -> torch.device: return next(self.model.parameters()).device
-
-  def to(self, device: torch.device):
-    self.model = self.model.to(device)
-    return self
-
   @staticmethod
+  @timeit(desc="Load time", ms=False)
   def from_pretrained(model_desc: str='gpt2'):
     model, tokenizer, config = build(model_desc)
     return GPT2(model, tokenizer, config)

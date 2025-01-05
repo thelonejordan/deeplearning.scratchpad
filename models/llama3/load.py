@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 from dataclasses import asdict
-from models.helpers import timeit
+
 from models.llama3.tokenizer import Tokenizer
 from models.llama3.transformer import Transformer
 from models.llama3.config import LlamaConfig
@@ -29,7 +29,6 @@ def _torch_load(repo_id: str):
   state_dict = {k:v for k, v in state_dict.items() if not k.endswith("freq")}
   return state_dict
 
-@timeit(desc="Load time", ms=False)
 def build(max_seq_len: int, max_batch_size: int, seed: int=1,
           model_desc: str='8B', version: int=0, instruct: bool=False, safetensors: bool=True):
   assert model_desc in ('1B', '3B', '8B', '70B'), f'invalid model_type: {model_desc}'
