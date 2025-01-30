@@ -12,7 +12,9 @@ from models.mistral_nonrolling.tokenizer import Tokenizer
 
 class Mistral(Generator):
   def __init__(self, model: Transformer, tokenizer: Tokenizer, config: MistralConfig):
-    self.model, self.tokenizer, self.config = model, tokenizer, config
+    self.model: Transformer = model
+    self.tokenizer = tokenizer
+    self.config = config
 
   @staticmethod
   @timeit(desc="Load time", ms=False)
@@ -52,10 +54,10 @@ def generate(model: Transformer, tokenizer: Tokenizer, device: torch.device, pro
     logprobs = F.log_softmax(logits, dim=-1)
     cur_pos += 1
 
-  all_logprobs = torch.cat(all_logprobs, 1)
+  all_logprobs_ = torch.cat(all_logprobs, 1)
   res = []
   if max_tokens > 0:
-    generated = torch.cat(generated, 1)
+    generated_ = torch.cat(generated, 1)
     for i, x in enumerate(encoded_prompts):
-      res.append(tokenizer.decode(x[:min_prompt_len] + generated[i].tolist()))
-  return res, all_logprobs
+      res.append(tokenizer.decode(x[:min_prompt_len] + generated_[i].tolist()))
+  return res, all_logprobs_

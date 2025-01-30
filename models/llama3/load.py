@@ -1,3 +1,4 @@
+from typing import Literal
 import json
 from pathlib import Path
 from dataclasses import asdict
@@ -29,8 +30,11 @@ def _torch_load(repo_id: str):
   state_dict = {k:v for k, v in state_dict.items() if not k.endswith("freq")}
   return state_dict
 
+ModelOptions = Literal['1B','3B','8B','70B']
+VersionOptions = Literal[0,1,2]
+
 def build(max_seq_len: int, max_batch_size: int, seed: int=1,
-          model_desc: str='8B', version: int=0, instruct: bool=False, safetensors: bool=True):
+          model_desc: ModelOptions='8B', version: VersionOptions=0, instruct: bool=False, safetensors: bool=True):
   assert model_desc in ('1B', '3B', '8B', '70B'), f'invalid model_type: {model_desc}'
   if model_desc in ('8B', '70B'): assert version in (0, 1)
   if model_desc in ('1B', '3B'): assert version == 2

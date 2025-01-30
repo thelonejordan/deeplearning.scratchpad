@@ -1,12 +1,12 @@
-from typing import Set
+from typing import Set, Literal
 from pathlib import Path
 from dataclasses import asdict
 
 import torch
 import safetensors.torch
-from huggingface_hub import snapshot_download
+from huggingface_hub import snapshot_download  # type: ignore
 
-from models.gpt2.config import GPTConfig
+from models.gpt2.config import GPTConfig, CONFIGS
 from models.gpt2.transformer import Transformer
 from models.gpt2.tokenizer import Tokenizer
 
@@ -31,13 +31,10 @@ def _torch_load(checkpoint: str, transposed: Set[str]=set(), skip: Set[str]=set(
     filtered_state_dict[k] = v.t() if any(k.endswith(w) for w in transposed) else v
   return filtered_state_dict
 
-def build(model_desc: str='gpt2', safetensors: bool=True):
-  params = {
-    'gpt2':         dict(n_layer=12, n_head=12, n_embd=768),  # 124M params
-    'gpt2-medium':  dict(n_layer=24, n_head=16, n_embd=1024), # 350M params
-    'gpt2-large':   dict(n_layer=36, n_head=20, n_embd=1280), # 774M params
-    'gpt2-xl':      dict(n_layer=48, n_head=25, n_embd=1600), # 1558M params
-  }[model_desc]
+ModelOptions = Literal['gpt2','gpt2-medium','gpt2-large','gpt2-xl']
+
+def build(model_desc: ModelOptions='gpt2', safetensors: bool=True):
+  params = CONFIGS[model_desc]
   transposed = {'attn.c_attn.weight', 'attn.c_proj.weight', 'mlp.c_fc.weight', 'mlp.c_proj.weight'}
   skip = {'.attn.masked_bias', '.attn.bias'}
   loader = _safetensors_load if safetensors else _torch_load

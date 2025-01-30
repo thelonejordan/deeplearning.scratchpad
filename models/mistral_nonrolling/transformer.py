@@ -67,7 +67,7 @@ class Attention(nn.Module):
       key, value = repeat_kv(xk, xv, self.repeats)
     else:
       cur_pos = positions[-1].item() + 1
-      key, value = repeat_kv(self.cache_k[:bsz, :cur_pos, ...], self.cache_v[:bsz, :cur_pos, ...], self.repeats)
+      key, value = repeat_kv(self.cache_k[:bsz, :cur_pos, ...], self.cache_v[:bsz, :cur_pos, ...], self.repeats)  # type: ignore
     query, key, value = xq.transpose(1, 2), key.transpose(1, 2), value.transpose(1, 2)
     output = _fused_attention(query, key, value, mask, self.head_dim**-0.5)
     output = output.transpose(1, 2).contiguous().view(bsz, seqlen, -1)

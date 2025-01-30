@@ -37,3 +37,11 @@ class LlamaConfig:
   @staticmethod
   def build(max_seq_len: int=2048, max_batch_size: int=32, **params) -> LlamaConfig:
     return LlamaConfig(max_seq_len=max_seq_len, max_batch_size=max_batch_size, **params)
+
+
+CONFIGS = {
+  '7B' : dict(dim=4096, n_heads=32, n_layers=32, norm_eps=1e-05), # 6.7B
+  '13B': dict(dim=5120, n_heads=40, n_layers=40, norm_eps=1e-05), # 13.0B
+  '30B': dict(dim=6656, n_heads=52, n_layers=60, norm_eps=1e-05), # 32.5B
+  '65B': dict(dim=8192, n_heads=64, n_layers=80, norm_eps=1e-05), # 65.2B
+}

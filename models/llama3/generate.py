@@ -8,7 +8,7 @@ from models.helpers import Generator, timeit
 from models.llama3.tokenizer import Tokenizer
 from models.llama3.transformer import Transformer
 from models.llama3.config import LlamaConfig
-from models.llama3.load import build
+from models.llama3.load import build, ModelOptions, VersionOptions
 from models.llama.generate import sample_top_p
 from models.llama2.generate import CompletionPrediction
 
@@ -20,7 +20,7 @@ class Llama(Generator):
   @staticmethod
   @timeit(desc="Load time", ms=False)
   def from_pretrained(max_seq_len: int=512, max_batch_size: int=8,
-                      model_desc: str='8B', version: int=0, instruct: bool=False) -> Llama:
+                      model_desc: ModelOptions='8B', version: VersionOptions=0, instruct: bool=False) -> Llama:
     model, tokenizer, config = build(
       max_seq_len, max_batch_size, model_desc=model_desc, version=version, instruct=instruct)
     return Llama(model, tokenizer, config)
@@ -111,13 +111,12 @@ def generate(generator: Llama, prompt_tokens: List[List[int]], max_gen_len: int,
       break
 
   if logprobs:
-    token_logprobs = token_logprobs.tolist()
+    token_logprobs = token_logprobs.tolist()  # type: ignore
   out_tokens, out_logprobs = [], []
   for i, toks in enumerate(tokens.tolist()):
     # cut to max gen len
     start = 0 if echo else len(prompt_tokens[i])
     toks = toks[start : len(prompt_tokens[i]) + max_gen_len]
-    probs = None
     if logprobs:
       probs = token_logprobs[i][start : len(prompt_tokens[i]) + max_gen_len]
     # cut to after eos tok if any
@@ -125,12 +124,13 @@ def generate(generator: Llama, prompt_tokens: List[List[int]], max_gen_len: int,
       try:
         eos_idx = toks.index(stop_token)
         toks = toks[:eos_idx]
-        probs = probs[:eos_idx] if logprobs else None
+        if logprobs:
+          probs = probs[:eos_idx]
       except ValueError:
         pass
     out_tokens.append(toks)
-    out_logprobs.append(probs)
-  return (out_tokens, out_logprobs if logprobs else None)
+    out_logprobs.append(probs.tolist())
+  return out_tokens, (out_logprobs if logprobs else None)
 
 
 def text_completion(generator: Llama, prompts: List[str], temperature: float=0.6, top_p: float=0.9,
@@ -174,6 +174,6 @@ def text_completion(generator: Llama, prompts: List[str], temperature: float=0.6
         "tokens": [tokenizer.decode([x]) for x in t],
         "logprobs": logprobs_i,
       }
-      for t, logprobs_i in zip(generation_tokens, generation_logprobs)
+      for t, logprobs_i in zip(generation_tokens, generation_logprobs)  # type: ignore
     ]
   return [{"generation": tokenizer.decode(t)} for t in generation_tokens]

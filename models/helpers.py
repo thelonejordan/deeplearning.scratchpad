@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, cast
 from time import perf_counter
 from functools import partial
 import os, torch
@@ -31,7 +31,7 @@ def set_device(device: Optional[str]=None) -> torch.device:
   print(f'Using device: {device}')
   return torch.device(device)
 
-def set_seed(device: Optional[torch.device]=None, seed: Optional[int]=None):
+def set_seed(device: torch.device, seed: Optional[int]=None):
   if seed is None: seed = int(os.getenv("SEED", 420))
   torch.manual_seed(seed)
   if device.type == 'cuda': torch.cuda.manual_seed(seed)
@@ -40,9 +40,9 @@ def set_seed(device: Optional[torch.device]=None, seed: Optional[int]=None):
 
 class Generator:
   @property
-  def device(self) -> torch.device: return next(self.model.parameters()).device
+  def device(self) -> torch.device: return next(cast(torch.nn.Module, self.model).parameters()).device  # type: ignore
   @property
-  def dtype(self) -> torch.dtype: return next(self.model.parameters()).dtype
+  def dtype(self) -> torch.dtype: return next(cast(torch.nn.Module, self.model).parameters()).dtype  # type: ignore
   def to(self, device: torch.device):
-    self.model = self.model.to(device)
+    self.model = cast(torch.nn.Module, self.model).to(device)  # type: ignore
     return self

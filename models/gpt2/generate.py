@@ -5,7 +5,7 @@ from torch import Tensor
 from torch.nn import functional as F
 
 from models.helpers import Generator, timeit
-from models.gpt2.load import build
+from models.gpt2.load import build, ModelOptions
 from models.gpt2.config import GPTConfig
 from models.gpt2.tokenizer import Tokenizer
 from models.gpt2.transformer import Transformer
@@ -17,7 +17,7 @@ class GPT2(Generator):
 
   @staticmethod
   @timeit(desc="Load time", ms=False)
-  def from_pretrained(model_desc: str='gpt2'):
+  def from_pretrained(model_desc: ModelOptions='gpt2'):
     model, tokenizer, config = build(model_desc)
     return GPT2(model, tokenizer, config)
 
@@ -75,7 +75,7 @@ def top_p_logits(logits: Tensor, p: float):
   """Nucleus sampling"""
   sorted_logits = logits.sort(dim=-1, descending=True).values
   cumulative_probs = F.softmax(sorted_logits, dim=-1).cumsum(dim=-1)
-  counts = cast(Tensor, cumulative_probs <= p).long().sum(dim=-1, keepdim=True)
+  counts = (cumulative_probs <= p).long().sum(dim=-1, keepdim=True)
   indices = torch.maximum(counts - 1, torch.zeros_like(counts)).long()
   min_values = torch.gather(sorted_logits, -1, indices)
   return torch.where(

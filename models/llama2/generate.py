@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Optional, List, Tuple, TypedDict
+from typing import Optional, List, Tuple, TypedDict, Literal
 
 import torch
 import torch.nn.functional as F
@@ -8,7 +8,7 @@ from models.helpers import Generator, timeit
 from models.llama.tokenizer import Tokenizer
 from models.llama2.transformer import Transformer
 from models.llama.config import LlamaConfig
-from models.llama2.load import build
+from models.llama2.load import build, ModelOptions
 from models.llama.generate import sample_top_p
 
 
@@ -18,7 +18,7 @@ class Llama(Generator):
 
   @staticmethod
   @timeit(desc="Load time", ms=False)
-  def from_pretrained(max_seq_len: int=512, max_batch_size: int=8, model_desc: str='7B', chat: bool=False) -> Llama:
+  def from_pretrained(max_seq_len: int=512, max_batch_size: int=8, model_desc: ModelOptions='7B', chat: bool=False) -> Llama:
     model, tokenizer, config = build(max_seq_len, max_batch_size, model_desc, chat)
     return Llama(model, tokenizer, config)
 
@@ -97,23 +97,23 @@ def generate(generator: Llama, prompt_tokens: List[List[int]], max_gen_len: int,
       break
 
   if logprobs:
-    token_logprobs = token_logprobs.tolist()
+    token_logprobs = token_logprobs.tolist()  # type: ignore
   out_tokens, out_logprobs = [], []
   for i, toks in enumerate(tokens.tolist()):
     # cut to max gen len
     start = 0 if echo else len(prompt_tokens[i])
     toks = toks[start : len(prompt_tokens[i]) + max_gen_len]
-    probs = None
     if logprobs:
       probs = token_logprobs[i][start : len(prompt_tokens[i]) + max_gen_len]
     # cut to eos tok if any
     if tokenizer.eos_id in toks:
       eos_idx = toks.index(tokenizer.eos_id)
       toks = toks[:eos_idx]
-      probs = probs[:eos_idx] if logprobs else None
+      if logprobs:
+        probs = probs[:eos_idx]
     out_tokens.append(toks)
-    out_logprobs.append(probs)
-  return (out_tokens, out_logprobs if logprobs else None)
+    out_logprobs.append(probs.tolist())
+  return out_tokens, (out_logprobs if logprobs else None)
 
 
 class CompletionPrediction(TypedDict, total=False):
@@ -160,9 +160,9 @@ def text_completion(generator: Llama, prompts: List[str], temperature: float=0.6
     return [
       {
         "generation": tokenizer.decode(t),
-        "tokens": [tokenizer.decode(x) for x in t],
+        "tokens": [tokenizer.decode([x]) for x in t],
         "logprobs": logprobs_i,
       }
-      for t, logprobs_i in zip(generation_tokens, generation_logprobs)
+      for t, logprobs_i in zip(generation_tokens, generation_logprobs)  # type: ignore
     ]
   return [{"generation": tokenizer.decode(t)} for t in generation_tokens]

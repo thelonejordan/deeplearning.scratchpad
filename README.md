@@ -13,3 +13,10 @@
 - [x] ResNet
 - [x] U-Net
 - [x] AlexNet
+
+
+## Type Checking
+
+```shell
+python -m mypy models/gpt2 models/llama* models/mistral* models/helpers.py
+```
