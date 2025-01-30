@@ -1,7 +1,12 @@
 torch
 huggingface-hub
+transformers
 tiktoken
 sentencepiece
 blobfile
 notebook
 ipywidgets
+einops
+pillow
+invisible-watermark
+fire
