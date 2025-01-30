@@ -9,3 +9,8 @@ requests
 # notebook
 # ipywidgets
 # mypy
+# diffusers
+# einops
+# pillow
+# invisible-watermark
+# fire
