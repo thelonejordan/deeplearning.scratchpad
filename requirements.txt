@@ -2,3 +2,6 @@ torch
 huggingface-hub
 tiktoken
 sentencepiece
+blobfile
+notebook
+ipywidgets
