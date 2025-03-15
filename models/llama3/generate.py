@@ -1,5 +1,6 @@
 from __future__ import annotations
 from typing import Optional, List, Tuple
+import os
 
 import torch
 import torch.nn.functional as F
@@ -12,6 +13,7 @@ from models.llama3.load import build, ModelOptions, VersionOptions
 from models.llama.generate import sample_top_p
 from models.llama2.generate import CompletionPrediction
 
+TORCH = os.getenv("TORCH", "0") == "1"
 
 class Llama(Generator):
   def __init__(self, model: Transformer, tokenizer: Tokenizer, config: LlamaConfig):
@@ -21,8 +23,9 @@ class Llama(Generator):
   @timeit(desc="Load time", ms=False)
   def from_pretrained(max_seq_len: int=512, max_batch_size: int=8,
                       model_desc: ModelOptions='8B', version: VersionOptions=0, instruct: bool=False) -> Llama:
+
     model, tokenizer, config = build(
-      max_seq_len, max_batch_size, model_desc=model_desc, version=version, instruct=instruct)
+      max_seq_len, max_batch_size, model_desc=model_desc, version=version, instruct=instruct, safetensors=not TORCH)
     return Llama(model, tokenizer, config)
 
   def text_completion(self, prompts: list[str], temperature: float=0.6, top_p: float=0.9,
