@@ -80,6 +80,9 @@ class Transformer(nn.Module):
     output = self.lm_head(h[:,-1,:])
     return output
 
+
+
+
   def get_num_params(self, non_embedding=True):
     n_params = sum(p.numel() for p in self.parameters())
     if non_embedding: n_params -= self.model.embed_tokens.weight.numel()
