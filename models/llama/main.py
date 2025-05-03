@@ -26,23 +26,6 @@ def main():
     print(sentence)
     print('-' * 50)
 
-def hf_main():
-  from transformers import LlamaTokenizer, LlamaForCausalLM
-  ckpt_path = "huggyllama/llama-7b"
-  # tokenizer = LlamaTokenizer.from_pretrained(ckpt_path)
-  model = LlamaForCausalLM.from_pretrained(ckpt_path, device_map="cpu")
-  print(model.model.rotary_emb.rope_type)
-
-  # generator = pipeline(model=model, tokenizer=tokenizer, device=0)
-  # context = "Hello, I'm a language model,"
-  # prompts = [context] * 4
-
-  # out = generator(prompts, max_length=32)
-  # print('-' * 50)
-  # for sentence in out:
-  #   print(sentence['generated_text'])
-  #   print('-' * 50)
 
 if __name__ == "__main__":
   main()
-  # hf_main()

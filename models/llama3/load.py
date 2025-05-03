@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Literal, get_args
 import json
 from pathlib import Path
 from dataclasses import asdict
@@ -35,7 +35,8 @@ VersionOptions = Literal[0,1,2]
 
 def build(max_seq_len: int, max_batch_size: int, seed: int=1,
           model_desc: ModelOptions='8B', version: VersionOptions=0, instruct: bool=False, safetensors: bool=True):
-  assert model_desc in ('1B', '3B', '8B', '70B'), f'invalid model_type: {model_desc}'
+  assert model_desc in get_args(ModelOptions), f'invalid model_type: {model_desc}'
+  assert version in get_args(VersionOptions), f'invalid version: {version}'
   if model_desc in ('8B', '70B'): assert version in (0, 1)
   if model_desc in ('1B', '3B'): assert version == 2
   v = '' if version == 0 else f'.{version}'
@@ -44,6 +45,7 @@ def build(max_seq_len: int, max_batch_size: int, seed: int=1,
   ckpt_dir = snapshot_download(repo_id, allow_patterns="original/params.json")
   with open(f"{ckpt_dir}/original/params.json") as f:
     params = json.loads(f.read())
+    # TODO: understand use_scaled_rope
     if 'use_scaled_rope' in params: params.pop('use_scaled_rope')
   ckpt_dir = snapshot_download(repo_id, allow_patterns="original/tokenizer.model")
   tokenizer = Tokenizer(f"{ckpt_dir}/original/tokenizer.model")
@@ -67,8 +69,9 @@ def build(max_seq_len: int, max_batch_size: int, seed: int=1,
       if k.endswith("k_proj.weight"):
         state_dict[k] = permute_back(v, n_heads=num_key_value_heads, dim1=key_value_dim)
 
-  torch.set_default_dtype(config.torch_dtype)
+  torch.set_default_dtype(getattr(torch, config.torch_dtype))
   model = Transformer(**asdict(config))
   model.load_state_dict(state_dict, assign=True, strict=False)
+  # TODO: add this as a config parameter
   if version == 2: model = model.apply_weight_sharing()
   return model, tokenizer, config

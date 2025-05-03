@@ -12,11 +12,11 @@ def compute_hidden_dim(dim: int, multiple_of: int):
 @dataclass
 class LlamaConfig:
   # these changes based on model (get from params.json)
+  dim: int
   n_heads: int
   n_layers: int
-  dim: int
-  norm_eps: float
-  # these are same for all models
+  norm_eps: float = 1e-5
+  # these are constant across all models
   vocab_size: int = 32000
   multiple_of: int = 256
   max_position_embeddings: int = 2048
