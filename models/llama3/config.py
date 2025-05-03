@@ -13,10 +13,11 @@ class LlamaConfig:
   n_kv_heads: Optional[int] = None
   multiple_of: int = 256  # make SwiGLU hidden layer size multiple of large power of 2
   ffn_dim_multiplier: Optional[float] = None
-  # these are constant across all models
-  vocab_size: int = 128256
   max_position_embeddings: int = 131072
+  use_scaled_rope: bool = False  # TODO: understand use_scaled_rope
+  # these are constant across all models
   original_max_position_embeddings: int = 8192
+  vocab_size: int = 128256
   rope_theta: float = 500000.0
   norm_eps: float = 1e-5
   torch_dtype: str = "bfloat16"
@@ -43,3 +44,19 @@ class LlamaConfig:
   @staticmethod
   def build(max_seq_len: int, max_batch_size: int, **params) -> LlamaConfig:
     return LlamaConfig(max_seq_len=max_seq_len, max_batch_size=max_batch_size, **params)
+
+CONFIGS = {
+  "3": {
+    "8B": dict(dim=4096, n_layers=32, n_heads=32, n_kv_heads=8, max_position_embeddings=8192, multiple_of=1024, ffn_dim_multiplier=1.3),
+    "70B": dict(dim=8192, n_layers=80, n_heads=64, n_kv_heads=8, max_position_embeddings=8192, multiple_of=4096, ffn_dim_multiplier=1.3),
+  },
+  "3.1": {
+    "8B": dict(dim=4096, n_layers=32, n_heads=32, n_kv_heads=8, multiple_of=1024, ffn_dim_multiplier=1.3, use_scaled_rope=True),
+    "70B": dict(dim=8192, n_layers=80, n_heads=64, n_kv_heads=8, multiple_of=4096, ffn_dim_multiplier=1.3, use_scaled_rope=True),
+    "405B": dict(dim=16384, n_layers=126, n_heads=128, n_kv_heads=16, multiple_of=4096, ffn_dim_multiplier=1.2, use_scaled_rope=True),
+  },
+  "3.2": {
+    "1B": dict(dim=2048, n_layers=16, n_heads=32, n_kv_heads=8, ffn_dim_multiplier=1.5, use_scaled_rope=True),
+    "3B": dict(dim=3072, n_layers=28, n_heads=24, n_kv_heads=8, use_scaled_rope=True),
+  },
+}

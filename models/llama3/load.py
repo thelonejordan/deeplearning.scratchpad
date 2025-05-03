@@ -1,11 +1,10 @@
 from typing import Literal, get_args
-import json
 from pathlib import Path
 from dataclasses import asdict
 
 from models.llama3.tokenizer import Tokenizer
 from models.llama3.transformer import Transformer
-from models.llama3.config import LlamaConfig
+from models.llama3.config import LlamaConfig, CONFIGS
 from huggingface_hub import snapshot_download
 import safetensors.torch
 import torch
@@ -34,15 +33,6 @@ def _tokenizer_path(repo_id: str):
   ckpt_dir = snapshot_download(repo_id, allow_patterns="original/tokenizer.model")
   return f"{ckpt_dir}/original/tokenizer.model"
 
-def _load_params(repo_id: str):
-  ckpt_dir = snapshot_download(repo_id, allow_patterns="original/params.json")
-  # TODO: don't use params.json for generating config
-  with open(f"{ckpt_dir}/original/params.json") as f:
-    params = json.loads(f.read())
-  # TODO: understand use_scaled_rope
-  if 'use_scaled_rope' in params: params.pop('use_scaled_rope')
-  return params
-
 ModelOptions = Literal['1B','3B','8B','70B']
 VersionOptions = Literal[0,1,2]
 
@@ -55,7 +45,7 @@ def build(max_seq_len: int, max_batch_size: int, seed: int=1,
   v = '' if version == 0 else f'.{version}'
   prefix = 'Meta-'if version == 0 else ''
   repo_id = f'meta-llama/{prefix}Llama-3{v}-{model_desc}' + ('-Instruct' if instruct else '')
-  params = _load_params(repo_id)
+  params = CONFIGS[f"3{v}"][model_desc]
   config = LlamaConfig.build(max_seq_len, max_batch_size, **params)
   tokenizer = Tokenizer(_tokenizer_path(repo_id))
   assert config.vocab_size == tokenizer.n_words, f"{config.vocab_size=} != {tokenizer.n_words=}"
@@ -83,6 +73,6 @@ def build(max_seq_len: int, max_batch_size: int, seed: int=1,
   model = Transformer(**asdict(config))
   model.load_state_dict(state_dict, assign=True, strict=False)
   torch.set_default_dtype(default_dtype)
-  # TODO: add this as a config parameter
+  # TODO: add this as a config parameter?
   if version == 2: model = model.apply_weight_sharing()
   return model, tokenizer, config
