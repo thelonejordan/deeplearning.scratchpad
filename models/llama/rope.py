@@ -1,7 +1,7 @@
 from typing import Optional, Tuple
 
 import torch
-from torch import Tensor
+from torch import Tensor, LongTensor
 
 
 # https://github.com/meta-llama/llama/blob/57b0eb62de0636e75af471e49e2f1862d908d9d8/llama/model.py#L47
@@ -25,7 +25,34 @@ def apply_rotary_emb(xq: Tensor, xk: Tensor, freqs_cis: Tensor) -> Tuple[Tensor,
   return xq_out.type_as(xq), xk_out.type_as(xk)
 
 
+# TODO: add support for huggingface style RoPE implementation (sliced rotary)
+
+# https://github.com/huggingface/transformers/blob/main/src/transformers/modeling_rope_utils.py
+
+def _compute_default_rope_parameters(base: float, dim: int, device: Optional[torch.device] = None) -> tuple[Tensor, float]:
+
+  attention_factor = 1.0  # Unused in this type of RoPE
+
+  # Compute the inverse frequencies
+  inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2, dtype=torch.int64).to(device=device, dtype=torch.float) / dim))
+  return inv_freq, attention_factor
+
 # https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
+
+@torch.no_grad()
+def rotary_emb_forward(x: Tensor, position_ids: LongTensor, rope_theta: float, head_dim: int):
+  inv_freq, attention_scaling = _compute_default_rope_parameters(rope_theta, head_dim, x.device)
+  inv_freq_expanded = inv_freq[None, :, None].float().expand(position_ids.shape[0], -1, 1).to(x.device)
+  position_ids_expanded = position_ids[:, None, :].float()
+
+  device_type = x.device.type if isinstance(x.device.type, str) and x.device.type != "mps" else "cpu"
+  with torch.autocast(device_type=device_type, enabled=False):  # Force float32
+    freqs = (inv_freq_expanded.float() @ position_ids_expanded.float()).transpose(1, 2)
+    emb = torch.cat((freqs, freqs), dim=-1)
+    cos = emb.cos() * attention_scaling
+    sin = emb.sin() * attention_scaling
+
+  return cos.to(dtype=x.dtype), sin.to(dtype=x.dtype)
 
 def rotate_half(x: Tensor) -> Tensor:
   """Rotates half the hidden dims of the input."""
