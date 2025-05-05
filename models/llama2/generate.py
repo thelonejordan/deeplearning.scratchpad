@@ -1,10 +1,10 @@
 from __future__ import annotations
-from typing import Optional, List, Tuple, TypedDict, Literal
+from typing import Optional, List, Tuple, TypedDict
 
 import torch
 import torch.nn.functional as F
 
-from models.helpers import Generator, timeit
+from models.helpers import Generator, timeit, SAFETENSORS
 from models.llama.tokenizer import Tokenizer
 from models.llama2.transformer import Transformer
 from models.llama.config import LlamaConfig
@@ -19,7 +19,7 @@ class Llama(Generator):
   @staticmethod
   @timeit(desc="Load time", ms=False)
   def from_pretrained(max_seq_len: int=512, max_batch_size: int=8, model_desc: ModelOptions='7B', chat: bool=False) -> Llama:
-    model, tokenizer, config = build(max_seq_len, max_batch_size, model_desc, chat)
+    model, tokenizer, config = build(max_seq_len, max_batch_size, model_desc, chat, safetensors=SAFETENSORS)
     return Llama(model, tokenizer, config)
 
   def text_completion(self, prompts: list[str], temperature: float=0.6, top_p: float=0.9,

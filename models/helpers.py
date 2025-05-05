@@ -1,29 +1,30 @@
-from typing import Optional, cast
+from typing import Optional, Callable, cast
+import os
 from time import perf_counter
-from functools import partial
-import os, torch
+from functools import wraps
+import torch
 
-def timer(func, desc, ms):
+def timeit(desc: Optional[str]=None, ms: bool=True):
   desc = "Time elapsed" if desc is None else desc
-  def inner(*args, **kwargs):
-    start = perf_counter()
-    out = func(*args, **kwargs)
-    stop = perf_counter()
-    diff = stop - start
-    text = None
-    if ms: text = f"{desc}: {diff*1000:.2f}ms"
-    else: text = f"{desc}: {diff:.2f}s"
-    print(text)
-    return out
-  return inner
-
-def timeit(desc=None, ms=True):
-  return partial(timer, desc=desc, ms=ms)
+  def _timeit(func: Callable):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+      start = perf_counter()
+      out = func(*args, **kwargs)
+      stop = perf_counter()
+      diff = stop - start
+      text = None
+      if ms: text = f"{desc}: {diff*1000:.2f}ms"
+      else: text = f"{desc}: {diff:.2f}s"
+      print(text)
+      return out
+    return wrapper
+  return _timeit
 
 def set_device(device: Optional[str]=None) -> torch.device:
-  if os.getenv("CPU") == "1": device = 'cpu'
-  elif os.getenv("CUDA") == "1": device = 'cuda'
+  if os.getenv("CUDA") == "1": device = 'cuda'
   elif os.getenv("MPS") == "1": device = 'mps'
+  elif os.getenv("CPU") == "1": device = 'cpu'
   elif device is None:
     if torch.cuda.is_available(): device = 'cuda'
     elif torch.backends.mps.is_available(): device = 'mps'
@@ -46,3 +47,5 @@ class Generator:
   def to(self, device: torch.device):
     self.model = cast(torch.nn.Module, self.model).to(device)  # type: ignore
     return self
+
+SAFETENSORS = os.getenv("SAFETENSORS", "1") == "1"
