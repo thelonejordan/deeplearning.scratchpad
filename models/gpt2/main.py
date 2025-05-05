@@ -16,13 +16,13 @@ def main():
   device = set_device()
   set_seed(device)
 
-  model = GPT2.from_pretrained().to(device)
+  generator = GPT2.from_pretrained().to(device)
 
   print("Testing text completion (1)...")
   num_return_sequences = 8
   context = "Hello, I'm a language model,"
   prompts = [context] * num_return_sequences
-  out = model.text_completion(prompts, 64, top_k=50)
+  out = generator.text_completion(prompts, 64, top_k=50)
   print('-' * 50)
   for sentence in out:
     print(sentence)
@@ -36,7 +36,7 @@ def main():
     "Quantum computing is",
     "SpaceX and NASA have collaborated to make commercial"
   ]
-  out = model.text_completion(prompts, 256, top_k=50, top_p=0.75)
+  out = generator.text_completion(prompts, 256, top_k=50, top_p=0.75)
   print('-' * 50)
   for sentence in out:
     print(sentence)

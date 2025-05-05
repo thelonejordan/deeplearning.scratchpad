@@ -12,7 +12,7 @@ def main():
   set_seed(device)
 
   model_path = "downloads/mistral-7B-v0.1"
-  model = Mistral.from_pretrained(model_path, max_seq_len=36, max_batch_size=4, device=device)
+  generator = Mistral.from_pretrained(model_path, max_seq_len=36, max_batch_size=4, device=device)
 
   max_tokens: int = 36
   context = [
@@ -20,7 +20,7 @@ def main():
     "Simply put, the theory of relativity states that",
     "SpaceX and NASA have collaborated to make commercial",
   ]
-  res, _logprobs = model.generate(context, max_tokens=max_tokens)
+  res, _logprobs = generator.generate(context, max_tokens=max_tokens)
   print('-' * 50)
   for x in res:
     print(x)

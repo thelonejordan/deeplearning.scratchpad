@@ -10,14 +10,14 @@ def main():
   device = set_device()
   set_seed(device)
 
-  model = Llama.from_pretrained(max_batch_size=2, model_desc='3B', version=2).to(device)
+  generator = Llama.from_pretrained(max_batch_size=2, model_desc='3B', version='2').to(device)
 
   prompts = [
     "Simply put, the theory of relativity states that",
     "The phenomenon of global warming refers to the",
   ]
 
-  out = model.text_completion(prompts, max_gen_len=64, temperature=0.9, echo=True)
+  out = generator.text_completion(prompts, max_gen_len=64, temperature=0.9, echo=True)
   assert len(out) == len(prompts)
   print('-' * 50)
   for item in out:
