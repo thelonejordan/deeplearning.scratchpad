@@ -1,4 +1,4 @@
-# CPU=1 PYTHONPATH=. python3 models/llama/main.py
+# PYTHONPATH=. python3 models/llama/main.py
 
 # https://arxiv.org/abs/2302.13971
 # https://ai.meta.com/blog/large-language-model-llama-meta-ai/
@@ -14,13 +14,13 @@ def main():
   device = set_device()
   set_seed(device)
 
-  model = Llama.from_pretrained(max_batch_size=4).to(device)
+  generator = Llama.from_pretrained(max_batch_size=4).to(device)
 
   num_return_sequences = 4
   context = "Hello, I'm a language model,"
   prompts = [context] * num_return_sequences
 
-  out = model.text_completion(prompts, 32)
+  out = generator.text_completion(prompts, 32)
   print('-' * 50)
   for sentence in out:
     print(sentence)

@@ -1,7 +1,7 @@
 import torch
 from torch import Tensor, nn
 
-from models.llama.transformer import precompute_freqs_cis
+from models.llama.rope import precompute_freqs_cis
 from models.llama.transformer import RMSNorm
 from models.llama2.transformer import Block
 

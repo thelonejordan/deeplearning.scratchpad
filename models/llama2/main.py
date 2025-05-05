@@ -1,4 +1,4 @@
-# CPU=1 PYTHONPATH=. python3 models/llama2/main.py
+# PYTHONPATH=. python3 models/llama2/main.py
 
 # https://github.com/meta-llama/llama-models
 # https://github.com/meta-llama/llama/blob/llama_v2/llama/model.py
@@ -18,14 +18,14 @@ def main():
   device = set_device()
   set_seed(device)
 
-  model = Llama.from_pretrained(max_batch_size=2).to(device)
+  generator = Llama.from_pretrained(max_batch_size=2).to(device)
 
   prompts = [
     "Simply put, the theory of relativity states that",
     "If Google was an Italian company founded in Milan, it would",
   ]
 
-  out = model.text_completion(prompts, max_gen_len=64, echo=True)
+  out = generator.text_completion(prompts, max_gen_len=64, echo=True)
   assert len(out) == len(prompts)
   print('-' * 50)
   for item in out:

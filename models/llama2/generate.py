@@ -1,10 +1,10 @@
 from __future__ import annotations
-from typing import Optional, List, Tuple, TypedDict, Literal
+from typing import Optional, TypedDict
 
 import torch
 import torch.nn.functional as F
 
-from models.helpers import Generator, timeit
+from models.helpers import Generator, timeit, SAFETENSORS
 from models.llama.tokenizer import Tokenizer
 from models.llama2.transformer import Transformer
 from models.llama.config import LlamaConfig
@@ -19,7 +19,7 @@ class Llama(Generator):
   @staticmethod
   @timeit(desc="Load time", ms=False)
   def from_pretrained(max_seq_len: int=512, max_batch_size: int=8, model_desc: ModelOptions='7B', chat: bool=False) -> Llama:
-    model, tokenizer, config = build(max_seq_len, max_batch_size, model_desc, chat)
+    model, tokenizer, config = build(max_seq_len, max_batch_size, model_desc, chat, safetensors=SAFETENSORS)
     return Llama(model, tokenizer, config)
 
   def text_completion(self, prompts: list[str], temperature: float=0.6, top_p: float=0.9,
@@ -28,13 +28,13 @@ class Llama(Generator):
 
 
 @torch.inference_mode()
-def generate(generator: Llama, prompt_tokens: List[List[int]], max_gen_len: int, temperature: float=0.6, top_p: float=0.9,
-             logprobs: bool=False, echo: bool=False) -> Tuple[List[List[int]], Optional[List[List[float]]]]:
+def generate(generator: Llama, prompt_tokens: list[list[int]], max_gen_len: int, temperature: float=0.6, top_p: float=0.9,
+             logprobs: bool=False, echo: bool=False) -> tuple[list[list[int]], Optional[list[list[float]]]]:
   """
   Generate text sequences based on provided prompts using the language generation model.
 
   Args:
-    prompt_tokens (List[List[int]]): List of tokenized prompts, where each prompt is represented as a list of integers.
+    prompt_tokens (list[list[int]]): List of tokenized prompts, where each prompt is represented as a list of integers.
     max_gen_len (int): Maximum length of the generated text sequence.
     temperature (float, optional): Temperature value for controlling randomness in sampling. Defaults to 0.6.
     top_p (float, optional): Top-p probability threshold for nucleus sampling. Defaults to 0.9.
@@ -42,7 +42,7 @@ def generate(generator: Llama, prompt_tokens: List[List[int]], max_gen_len: int,
     echo (bool, optional): Flag indicating whether to include prompt tokens in the generated output. Defaults to False.
 
   Returns:
-    Tuple[List[List[int]], Optional[List[List[float]]]]: A tuple containing generated token sequences and, if logprobs is True, corresponding token log probabilities.
+    tuple[list[list[int]], Optional[list[list[float]]]]: A tuple containing generated token sequences and, if logprobs is True, corresponding token log probabilities.
 
   Note:
     This method uses the provided prompts as a basis for generating text. It employs nucleus sampling to produce text with controlled randomness.
@@ -118,17 +118,17 @@ def generate(generator: Llama, prompt_tokens: List[List[int]], max_gen_len: int,
 
 class CompletionPrediction(TypedDict, total=False):
   generation: str
-  tokens: List[str]  # not required
-  logprobs: List[float]  # not required
+  tokens: list[str]  # not required
+  logprobs: list[float]  # not required
 
 
-def text_completion(generator: Llama, prompts: List[str], temperature: float=0.6, top_p: float=0.9,
-                    max_gen_len: Optional[int]=None, logprobs: bool=False, echo: bool=False) -> List[CompletionPrediction]:
+def text_completion(generator: Llama, prompts: list[str], temperature: float=0.6, top_p: float=0.9,
+                    max_gen_len: Optional[int]=None, logprobs: bool=False, echo: bool=False) -> list[CompletionPrediction]:
   """
   Perform text completion for a list of prompts using the language generation model.
 
   Args:
-    prompts (List[str]): List of text prompts for completion.
+    prompts (list[str]): List of text prompts for completion.
     temperature (float, optional): Temperature value for controlling randomness in sampling. Defaults to 0.6.
     top_p (float, optional): Top-p probability threshold for nucleus sampling. Defaults to 0.9.
     max_gen_len (Optional[int], optional): Maximum length of the generated completion sequence.
@@ -137,7 +137,7 @@ def text_completion(generator: Llama, prompts: List[str], temperature: float=0.6
     echo (bool, optional): Flag indicating whether to include prompt tokens in the generated output. Defaults to False.
 
   Returns:
-    List[CompletionPrediction]: List of completion predictions, each containing the generated text completion.
+    list[CompletionPrediction]: List of completion predictions, each containing the generated text completion.
 
   Note:
     This method generates text completions for the provided prompts, employing nucleus sampling to introduce controlled randomness.
