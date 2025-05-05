@@ -5,6 +5,7 @@
 - [x] GPT2
 - [x] Llama
 - [x] Llama2
+- [x] Llama3
 - [x] Mistral
 - [x] Mixtral
 
@@ -13,7 +14,6 @@
 - [x] ResNet
 - [x] U-Net
 - [x] AlexNet
-
 
 ## Type Checking
 
