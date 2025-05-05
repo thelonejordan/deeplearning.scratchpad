@@ -2,6 +2,11 @@ from __future__ import annotations
 from typing import Optional
 from dataclasses import dataclass
 
+# calculating params:
+# traditionally, the MLP in the transformer architecture has hidden_dim = dim*4 [arxiv/1706.03762, 3.3]
+# however, Llama uses SwiGLU. in order to preserve param count to original transformer arch, hidden_dim must be = 2/3 * (dim*4) [arxiv/2002.05202]
+# for models using MQA (n_kv_heads != n_heads), preserving param count means hidden dim must be further multiplied by 1.3 [arxiv/2307.09288, A.2.1]
+
 # https://github.com/meta-llama/llama/blob/7565eb6fee2175b2d4fe2cfb45067a61b35d7f5e/llama/model.py#L331
 def compute_hidden_dim(dim: int, multiple_of: int, ffn_dim_multiplier: Optional[float]=None):
   hidden_dim = int(2 * (4 * dim) / 3)
@@ -15,7 +20,7 @@ class LlamaConfig:
   dim: int
   n_layers: int
   n_heads: int
-  n_kv_heads: Optional[int] = None
+  n_kv_heads: Optional[int] = None  # n_kv_heads != n_heads implies GQA [arxiv/2307.09288, A.2.1]
   multiple_of: int = 256  # make SwiGLU hidden layer size multiple of large power of 2
   ffn_dim_multiplier: Optional[float] = None
   # these are constant across all models
