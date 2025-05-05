@@ -1,4 +1,4 @@
-# CPU=1 PYTHONPATH=. python3 models/llama/main.py
+# PYTHONPATH=. python3 models/llama/main.py
 
 # https://arxiv.org/abs/2302.13971
 # https://ai.meta.com/blog/large-language-model-llama-meta-ai/

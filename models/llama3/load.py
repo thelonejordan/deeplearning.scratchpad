@@ -5,6 +5,7 @@ from dataclasses import asdict
 from models.llama3.tokenizer import Tokenizer
 from models.llama3.transformer import Transformer
 from models.llama3.config import LlamaConfig, CONFIGS
+from models.llama.load import convert_from_huggingface
 from huggingface_hub import snapshot_download
 import safetensors.torch
 import torch
@@ -64,26 +65,13 @@ def build(max_seq_len: int, max_batch_size: int, seed: int=1,
   state_dict = load_state_dict(repo_id, keymap)
 
   if safetensors:
-    # https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/convert_llama_weights_to_hf.py
+    state_dict = convert_from_huggingface(state_dict, config.dim, config.n_heads, n_kv_heads=config.n_kv_heads)
 
-    def permute_back(w, n_heads=config.n_heads, dim1=config.dim, dim2=config.dim):
-      return w.view(n_heads, 2, dim1 // n_heads // 2, dim2).transpose(1, 2).reshape(dim1, dim2)
-
-    dims_per_head = config.dim // config.n_heads
-    num_key_value_heads = config.n_kv_heads  # for GQA / MQA
-    key_value_dim = dims_per_head * num_key_value_heads
-
-    for k, v in state_dict.items():
-      if k.endswith("q_proj.weight"):
-        state_dict[k] = permute_back(v)
-      if k.endswith("k_proj.weight"):
-        state_dict[k] = permute_back(v, n_heads=num_key_value_heads, dim1=key_value_dim)
-
+  tie_word_embeddings = version == '2'  # TODO: add this as a config parameter?
   default_dtype = torch.get_default_dtype()
   torch.set_default_dtype(getattr(torch, config.torch_dtype))
   model = Transformer(**asdict(config))
-  model.load_state_dict(state_dict, assign=True, strict=False)
+  model.load_state_dict(state_dict, assign=True, strict=not tie_word_embeddings)
   torch.set_default_dtype(default_dtype)
-  # TODO: add this as a config parameter?
-  if version == '2': model = model.apply_weight_sharing()
+  if tie_word_embeddings: model = model.apply_weight_sharing()
   return model, tokenizer, config

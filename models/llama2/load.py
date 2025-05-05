@@ -7,6 +7,7 @@ import torch
 from models.llama.tokenizer import Tokenizer
 from models.llama2.transformer import Transformer
 from models.llama2.config import LlamaConfig, CONFIGS
+from models.llama.load import convert_from_huggingface
 
 def _torch_load(repo_id: str, keymap: dict[str, str] = {}):
   ckpt_dir = snapshot_download(repo_id, allow_patterns="consolidated*.pth")
@@ -57,20 +58,7 @@ def build(max_seq_len: int, max_batch_size: int, model_desc: ModelOptions='7B', 
   state_dict = load_state_dict(repo_id, keymap)
 
   if safetensors:
-    # https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/convert_llama_weights_to_hf.py
-
-    def permute_back(w, n_heads=config.n_heads, dim1=config.dim, dim2=config.dim):
-      return w.view(n_heads, 2, dim1 // n_heads // 2, dim2).transpose(1, 2).reshape(dim1, dim2)
-
-    dims_per_head = config.dim // config.n_heads  # same as head_dim
-    num_key_value_heads = config.n_kv_heads  # for GQA / MQA
-    key_value_dim = dims_per_head * num_key_value_heads
-
-    for k, v in state_dict.items():
-      if k.endswith("q_proj.weight"):
-        state_dict[k] = permute_back(v)
-      if k.endswith("k_proj.weight"):
-        state_dict[k] = permute_back(v, n_heads=num_key_value_heads, dim1=key_value_dim)
+    state_dict = convert_from_huggingface(state_dict, config.dim, config.n_heads, n_kv_heads=config.n_kv_heads)
 
   default_dtype = torch.get_default_dtype()
   torch.set_default_dtype(getattr(torch, config.torch_dtype))

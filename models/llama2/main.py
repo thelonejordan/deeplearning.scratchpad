@@ -1,4 +1,4 @@
-# CPU=1 PYTHONPATH=. python3 models/llama2/main.py
+# PYTHONPATH=. python3 models/llama2/main.py
 
 # https://github.com/meta-llama/llama-models
 # https://github.com/meta-llama/llama/blob/llama_v2/llama/model.py
