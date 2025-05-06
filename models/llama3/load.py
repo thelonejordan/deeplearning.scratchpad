@@ -71,7 +71,12 @@ def build(max_seq_len: int, max_batch_size: int, seed: int=1,
   default_dtype = torch.get_default_dtype()
   torch.set_default_dtype(getattr(torch, config.torch_dtype))
   model = Transformer(**asdict(config))
-  model.load_state_dict(state_dict, assign=True, strict=not tie_word_embeddings)
+  _model = model
+  if tie_word_embeddings:
+    _model = model.model
+    fixup = lambda k: k[len('model.'):] if k.startswith('model.') else k
+    state_dict = {fixup(k): v for k, v in state_dict.items() if k != "lm_head.weight"}
+  _model.load_state_dict(state_dict, assign=True, strict=True)
   torch.set_default_dtype(default_dtype)
   if tie_word_embeddings: model = model.apply_weight_sharing()
   return model, tokenizer, config
