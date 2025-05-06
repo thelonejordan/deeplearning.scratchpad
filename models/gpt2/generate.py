@@ -4,7 +4,7 @@ import torch
 from torch import Tensor
 from torch.nn import functional as F
 
-from models.helpers import Generator, timeit
+from models.helpers import Generator, timeit, SAFETENSORS
 from models.gpt2.load import build, ModelOptions
 from models.gpt2.config import GPTConfig
 from models.gpt2.tokenizer import Tokenizer
@@ -18,7 +18,7 @@ class GPT2(Generator):
   @staticmethod
   @timeit(desc="Load time", ms=False)
   def from_pretrained(model_desc: ModelOptions='gpt2'):
-    model, tokenizer, config = build(model_desc)
+    model, tokenizer, config = build(model_desc, safetensors=SAFETENSORS)
     return GPT2(model, tokenizer, config)
 
   def text_completion(self, prompts: List[str], max_new_tokens: int,

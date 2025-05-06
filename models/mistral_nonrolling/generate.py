@@ -18,8 +18,8 @@ class Mistral(Generator):
 
   @staticmethod
   @timeit(desc="Load time", ms=False)
-  def from_pretrained(folder: str, max_seq_len: int, max_batch_size: int, device: torch.device):
-    model, tokenizer, config = build(folder, max_seq_len, max_batch_size)
+  def from_pretrained(folder: str, version: str, max_seq_len: int, max_batch_size: int, device: torch.device):
+    model, tokenizer, config = build(folder, max_seq_len, max_batch_size, version=version)
     return Mistral(model, tokenizer, config).to(device)
 
   @torch.no_grad()

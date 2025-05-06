@@ -1,4 +1,4 @@
-from typing import Literal, get_args
+from typing import Optional, Literal, get_args
 import re
 from pathlib import Path
 from dataclasses import asdict
@@ -8,6 +8,7 @@ from models.llama.config import LlamaConfig, CONFIGS
 from huggingface_hub import snapshot_download
 import safetensors.torch
 import torch
+from torch import Tensor
 
 def _torch_load(repo_id: str):
   ckpt_dir = snapshot_download(repo_id, allow_patterns="pytorch_model*.bin")
@@ -18,7 +19,7 @@ def _torch_load(repo_id: str):
   assert len(checkpoints) > 0, f"no checkpoint files found in {ckpt_dir}"
   state_dict = {}
   for ckpt in checkpoints:
-    state_dict.update(torch.load(ckpt, map_location='cpu', weights_only=True))
+    state_dict.update(torch.load(ckpt, map_location='cpu', weights_only=True, mmap=True))
   state_dict = {k:v for k, v in state_dict.items() if "freq" not in k}
   return state_dict
 
@@ -36,7 +37,7 @@ def _tokenizer_path(repo_id: str):
   tokenizer_path = f"{ckpt_dir}/tokenizer.model"
   return tokenizer_path
 
-def convert_from_huggingface(state_dict, dim, n_heads, n_kv_heads=None):
+def convert_from_huggingface(state_dict: dict[str, Tensor], dim: int, n_heads: int, n_kv_heads: Optional[int]=None):
   # huggingface stores Q and K permuted! it is mostly correct without this, but without it makes RoPE different, so it will diverge after 10+ toks.
   # https://github.com/huggingface/transformers/blob/2932f318a20d9e54cc7aea052e040164d85de7d6/src/transformers/models/llama/convert_llama_weights_to_hf.py
   # https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/convert_llama_weights_to_hf.py

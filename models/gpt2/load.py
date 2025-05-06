@@ -1,4 +1,4 @@
-from typing import Set, Literal
+from typing import Set, Literal, get_args
 from pathlib import Path
 from dataclasses import asdict
 
@@ -21,10 +21,11 @@ def _safetensors_load(repo_id: str, transposed: Set[str]=set(), skip: Set[str]=s
   return filtered_state_dict
 
 def _torch_load(checkpoint: str, transposed: Set[str]=set(), skip: Set[str]=set()):
-  ckpt_dir = snapshot_download(checkpoint, allow_patterns="*.bin")
-  checkpoints = sorted(Path(ckpt_dir).glob("*.bin"))
+  ckpt_dir = snapshot_download(checkpoint, allow_patterns="pytorch_model*.bin")
+  checkpoints = sorted(Path(ckpt_dir).glob("pytorch_model*.bin"))
   state_dict, filtered_state_dict  = {}, {}
   for ckpt in checkpoints:
+    # RuntimeError: mmap can only be used with files saved with `torch.save(_use_new_zipfile_serialization=True), please torch.save your checkpoint with this option in order to use mmap.
     state_dict.update(torch.load(ckpt, map_location='cpu', weights_only=True))
   for k, v in state_dict.items():
     if any(k.endswith(w) for w in skip): continue
@@ -34,14 +35,18 @@ def _torch_load(checkpoint: str, transposed: Set[str]=set(), skip: Set[str]=set(
 ModelOptions = Literal['gpt2','gpt2-medium','gpt2-large','gpt2-xl']
 
 def build(model_desc: ModelOptions='gpt2', safetensors: bool=True):
+  assert model_desc in get_args(ModelOptions), f'invalid model_desc: {model_desc}'
   params = CONFIGS[model_desc]
   transposed = {'attn.c_attn.weight', 'attn.c_proj.weight', 'mlp.c_fc.weight', 'mlp.c_proj.weight'}
   skip = {'.attn.masked_bias', '.attn.bias'}
-  loader = _safetensors_load if safetensors else _torch_load
-  state_dict = loader(model_desc, transposed, skip)
+  load_state_dict = _safetensors_load if safetensors else _torch_load
+  state_dict = load_state_dict(model_desc, transposed, skip)
   tokenizer = Tokenizer()
-  params['vocab_size'] = tokenizer.model.n_vocab
   config = GPTConfig(**params)
+  assert config.vocab_size == tokenizer.n_words, (config.vocab_size, tokenizer.n_words)
+  default_dtype = torch.get_default_dtype()
+  torch.set_default_dtype(getattr(torch, config.torch_dtype))
   model = Transformer(**asdict(config))
   model.transformer.load_state_dict(state_dict, assign=True, strict=True)
+  torch.set_default_dtype(default_dtype)
   return model.apply_weight_sharing(), tokenizer, config

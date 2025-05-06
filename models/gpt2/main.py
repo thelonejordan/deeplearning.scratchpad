@@ -19,7 +19,7 @@ def main():
   generator = GPT2.from_pretrained().to(device)
 
   print("Testing text completion (1)...")
-  num_return_sequences = 8
+  num_return_sequences = 4
   context = "Hello, I'm a language model,"
   prompts = [context] * num_return_sequences
   out = generator.text_completion(prompts, 64, top_k=50)
@@ -32,7 +32,6 @@ def main():
 
   print("Testing text completion (2)...")
   prompts = [
-    "Hello, I'm a language model,",
     "Quantum computing is",
     "SpaceX and NASA have collaborated to make commercial"
   ]

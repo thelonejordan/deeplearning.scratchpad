@@ -2,12 +2,15 @@ from dataclasses import dataclass
 
 @dataclass
 class GPTConfig:
-  vocab_size: int = 50257
+  # these changes based on model (get from params.json)
+  n_layer: int
+  n_head: int
+  n_embd: int
+  # these are constant across all models
   n_ctx: int = 1024
-  n_layer: int = 12
-  n_head: int = 12
-  n_embd: int = 768
   norm_eps: float = 1e-5
+  vocab_size: int = 50257
+  torch_dtype: str = "float32"
 
 CONFIGS = {
   'gpt2':         dict(n_layer=12, n_head=12, n_embd=768),  # 124M params
