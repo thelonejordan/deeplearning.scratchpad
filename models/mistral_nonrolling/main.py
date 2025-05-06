@@ -14,9 +14,8 @@ def main():
   device = set_device()
   set_seed(device)
 
-  model_path = "downloads/mistral-7B-v0.1"
   version = '1'
-  generator = Mistral.from_pretrained(model_path, version, max_seq_len=36, max_batch_size=4, device=device)
+  generator = Mistral.from_pretrained(version, max_seq_len=36, max_batch_size=4, device=device)
 
   max_tokens: int = 36
   context = [
