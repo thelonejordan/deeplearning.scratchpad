@@ -10,7 +10,7 @@ from models.llama3.transformer import Transformer
 from models.llama3.config import LlamaConfig
 from models.llama3.load import build, ModelOptions, VersionOptions
 from models.llama.generate import sample_top_p
-from models.llama2.generate import CompletionPrediction, text_completion
+from models.llama2.generate import text_completion
 
 
 class Llama(Generator):
@@ -23,7 +23,7 @@ class Llama(Generator):
                       model_desc: ModelOptions='8B', version: VersionOptions='0', instruct: bool=False) -> Llama:
 
     model, tokenizer, config = build(
-      max_seq_len, max_batch_size, model_desc=model_desc, version=version, instruct=instruct, safetensors=SAFETENSORS)
+      max_seq_len, max_batch_size, model_desc=model_desc, version=version, instruct=instruct, safetensors=bool(SAFETENSORS))
     return Llama(model, tokenizer, config)
 
   def text_completion(self, prompts: list[str], temperature: float=0.6, top_p: float=0.9,
@@ -130,5 +130,6 @@ def generate(generator: Llama, prompt_tokens: list[list[int]], max_gen_len: int,
       except ValueError:
         pass
     out_tokens.append(toks)
-    out_logprobs.append(probs.tolist())
+    if logprobs:
+      out_logprobs.append(probs.tolist())
   return out_tokens, (out_logprobs if logprobs else None)
