@@ -77,18 +77,18 @@ def text_completion(generator: Llama, prompts: List[str], max_gen_len: int,
 
 def sample_top_p(probs: Tensor, p: float) -> Tensor:
   """
-    Perform top-p (nucleus) sampling on a probability distribution.
+  Perform top-p (nucleus) sampling on a probability distribution.
 
-    Args:
-      probs (torch.Tensor): Probability distribution tensor.
-      p (float): Probability threshold for top-p sampling.
+  Args:
+    probs (torch.Tensor): Probability distribution tensor.
+    p (float): Probability threshold for top-p sampling.
 
-    Returns:
-      torch.Tensor: Sampled token indices.
+  Returns:
+    torch.Tensor: Sampled token indices.
 
-    Note:
-      Top-p sampling selects the smallest set of tokens whose cumulative probability mass
-      exceeds the threshold p. The distribution is renormalized based on the selected tokens.
+  Note:
+    Top-p sampling selects the smallest set of tokens whose cumulative probability mass
+    exceeds the threshold p. The distribution is renormalized based on the selected tokens.
   """
   probs_sort, probs_idx = torch.sort(probs, dim=-1, descending=True)
   probs_sum = torch.cumsum(probs_sort, dim=-1)

@@ -10,7 +10,7 @@ from models.llama3.transformer import Transformer
 from models.llama3.config import LlamaConfig
 from models.llama3.load import build, ModelOptions, VersionOptions
 from models.llama.generate import sample_top_p
-from models.llama2.generate import CompletionPrediction
+from models.llama2.generate import CompletionPrediction, text_completion
 
 
 class Llama(Generator):
@@ -132,49 +132,3 @@ def generate(generator: Llama, prompt_tokens: list[list[int]], max_gen_len: int,
     out_tokens.append(toks)
     out_logprobs.append(probs.tolist())
   return out_tokens, (out_logprobs if logprobs else None)
-
-
-def text_completion(generator: Llama, prompts: list[str], temperature: float=0.6, top_p: float=0.9,
-                    max_gen_len: Optional[int]=None, logprobs: bool=False, echo: bool=False) -> list[CompletionPrediction]:
-  """
-  Perform text completion for a list of prompts using the language generation model.
-
-  Args:
-    prompts (list[str]): List of text prompts for completion.
-    temperature (float, optional): Temperature value for controlling randomness in sampling. Defaults to 0.6.
-    top_p (float, optional): Top-p probability threshold for nucleus sampling. Defaults to 0.9.
-    max_gen_len (Optional[int], optional): Maximum length of the generated completion sequence.
-        If not provided, it's set to the model's maximum sequence length minus 1.
-    logprobs (bool, optional): Flag indicating whether to compute token log probabilities. Defaults to False.
-    echo (bool, optional): Flag indicating whether to include prompt tokens in the generated output. Defaults to False.
-
-  Returns:
-    list[CompletionPrediction]: List of completion predictions, each containing the generated text completion.
-
-  Note:
-    This method generates text completions for the provided prompts, employing nucleus sampling to introduce controlled randomness.
-    If logprobs is True, token log probabilities are computed for each generated token.
-  """
-  tokenizer, max_seq_len = generator.tokenizer, generator.config.max_seq_len
-  if max_gen_len is None:
-      max_gen_len = max_seq_len - 1
-  prompt_tokens = [tokenizer.encode(x, bos=True, eos=False) for x in prompts]
-  generation_tokens, generation_logprobs = generate(
-      generator=generator,
-      prompt_tokens=prompt_tokens,
-      max_gen_len=max_gen_len,
-      temperature=temperature,
-      top_p=top_p,
-      logprobs=logprobs,
-      echo=echo,
-  )
-  if logprobs:
-    return [
-      {
-        "generation": tokenizer.decode(t),
-        "tokens": [tokenizer.decode([x]) for x in t],
-        "logprobs": logprobs_i,
-      }
-      for t, logprobs_i in zip(generation_tokens, generation_logprobs)  # type: ignore
-    ]
-  return [{"generation": tokenizer.decode(t)} for t in generation_tokens]
