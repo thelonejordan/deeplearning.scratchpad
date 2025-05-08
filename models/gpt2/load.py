@@ -40,7 +40,7 @@ def build(model_desc: ModelOptions='gpt2', safetensors: bool=True):
   transposed = {'attn.c_attn.weight', 'attn.c_proj.weight', 'mlp.c_fc.weight', 'mlp.c_proj.weight'}
   skip = {'.attn.masked_bias', '.attn.bias'}
   load_state_dict = _safetensors_load if safetensors else _torch_load
-  state_dict = load_state_dict(f"openai-community/{model_desc}", transposed, skip)
+  state_dict = load_state_dict(model_desc, transposed, skip)
   tokenizer = Tokenizer()
   config = GPTConfig(**params)
   assert config.vocab_size == tokenizer.n_words, (config.vocab_size, tokenizer.n_words)
