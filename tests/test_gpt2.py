@@ -7,7 +7,7 @@ from models.gpt2.generate import GPT2, generate
 
 DEVICE = set_device()
 
-def huggingface_run(prompts: list[str], model_desc="gpt2"):
+def huggingface_run(prompts: list[str], model_desc: str="gpt2"):
   os.environ["TOKENIZERS_PARALLELISM"] = "true"
   tokenizer = AutoTokenizer.from_pretrained(model_desc)
   tokenizer.add_special_tokens({'pad_token': tokenizer.eos_token})
@@ -21,7 +21,7 @@ def huggingface_run(prompts: list[str], model_desc="gpt2"):
   texts = tokenizer.batch_decode(outputs, skip_special_tokens=True, clean_up_tokenization_spaces=False)
   return input_tokens, output_tokens, texts
 
-def self_run(prompts: list[str], model_desc="gpt2"):
+def self_run(prompts: list[str], model_desc: str="gpt2"):
   max_seq_len = 30
   generator = GPT2.from_pretrained(model_desc).to(DEVICE)
   tokenizer = generator.tokenizer
