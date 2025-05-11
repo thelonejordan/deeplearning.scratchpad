@@ -26,7 +26,7 @@ def _torch_load(repo_id: str, transposed: Set[str]=set(), skip: Set[str]=set()):
   state_dict, filtered_state_dict  = {}, {}
   for ckpt in checkpoints:
     # RuntimeError: mmap can only be used with files saved with `torch.save(_use_new_zipfile_serialization=True), please torch.save your checkpoint with this option in order to use mmap.
-    state_dict.update(torch.load(ckpt, map_location='cpu', weights_only=True))
+    state_dict.update(torch.load(str(ckpt), map_location='cpu', weights_only=True))
   for k, v in state_dict.items():
     if any(k.endswith(w) for w in skip): continue
     filtered_state_dict[k] = v.t() if any(k.endswith(w) for w in transposed) else v

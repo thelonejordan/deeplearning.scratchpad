@@ -19,7 +19,7 @@ def _torch_load(repo_id: str):
   assert len(checkpoints) > 0, f"no checkpoint files found in {ckpt_dir}"
   state_dict = {}
   for ckpt in checkpoints:
-    state_dict.update(torch.load(ckpt, map_location='cpu', weights_only=True, mmap=True))
+    state_dict.update(torch.load(str(ckpt), map_location='cpu', weights_only=True, mmap=True))
   state_dict = {k:v for k, v in state_dict.items() if "freq" not in k}
   return state_dict
 
