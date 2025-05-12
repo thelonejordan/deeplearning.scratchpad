@@ -1,3 +1,5 @@
+# PYTHONPATH=. python -m unittest tests/test_llama3.py
+
 import os
 import unittest
 
@@ -63,20 +65,19 @@ class TestLlama3Greedy(unittest.TestCase):
           "inputs_target": self.inputs_target,
           "outputs_target": [[128000, 791, 10334, 315, 1375, 44515, 5415, 430, 279, 4732, 315, 3177, 374, 6926, 304, 264, 29302, 13, 1115, 3445, 430, 279, 4732, 315, 3177, 374, 279, 1890, 369, 682]],
           "completion_target": ["The theory of relativity states that the speed of light is constant in a vacuum. This means that the speed of light is the same for all"]
-          # self_run output
-          # "outputs_target": [[128000, 791, 10334, 315, 1375, 44515, 5415, 430, 279, 4732, 315, 3177, 374, 6926, 11, 323, 430, 433, 374, 279, 1890, 369, 682, 37643, 13, 1115, 374, 264, 16188, 17966]],
-          # "completion_target": ["The theory of relativity states that the speed of light is constant, and that it is the same for all observers. This is a fundamental principle"]
         },
       },
       "0": {
-        "inputs_target": self.inputs_target,
-        "outputs_target": [[128000, 791, 10334, 315, 1375, 44515, 5415, 430, 279, 4732, 315, 3177, 374, 6926, 11, 323, 430, 892, 323, 3634, 527, 8844, 13, 1115, 3445, 430, 279, 4732, 315, 3177]],
-        "completion_target": ["The theory of relativity states that the speed of light is constant, and that time and space are relative. This means that the speed of light"]
-        # self_run output
-        # "outputs_target": [[128000, 791, 10334, 315, 1375, 44515, 5415, 430, 279, 4732, 315, 3177, 374, 6926, 11, 323, 430, 433, 374, 279, 1890, 369, 682, 37643, 13, 1115, 3445, 430, 279, 4732]],
-        # "completion_target": ["The theory of relativity states that the speed of light is constant, and that it is the same for all observers. This means that the speed"]
+        "8B": {
+          "inputs_target": self.inputs_target,
+          "outputs_target": [[128000, 791, 10334, 315, 1375, 44515, 5415, 430, 279, 4732, 315, 3177, 374, 6926, 11, 323, 430, 892, 323, 3634, 527, 8844, 13, 1115, 3445, 430, 279, 4732, 315, 3177]],
+          "completion_target": ["The theory of relativity states that the speed of light is constant, and that time and space are relative. This means that the speed of light"]
+          # self_run output
+          # "outputs_target": [[128000, 791, 10334, 315, 1375, 44515, 5415, 430, 279, 4732, 315, 3177, 374, 6926, 11, 323, 430, 433, 374, 279, 1890, 369, 682, 37643, 13, 1115, 3445, 430, 279, 4732]],
+          # "completion_target": ["The theory of relativity states that the speed of light is constant, and that it is the same for all observers. This means that the speed"]
       },
     }
+  }
 
   def _check_output(self, inputs, outputs, completion, inputs_target, outputs_target, completion_target):
     self.assertEqual(inputs_target, inputs, "input tokens do not match")
@@ -117,14 +118,12 @@ class TestLlama3Greedy(unittest.TestCase):
     inputs, outputs, completion = huggingface_run(self.prompts, model_desc="8B", version="1")
     self._check_output(inputs, outputs, completion, **self.target["1"]["8B"])
 
-  @unittest.expectedFailure
   def test_llama_3_dot_1_8B_self_safetensors(self):
     with Context(SAFETENSORS=1):
       inputs, outputs, completion = self_run(self.prompts, model_desc="8B", version="1")
     self._check_output(inputs, outputs, completion, **self.target["1"]["8B"])
 
-  @unittest.expectedFailure
-  def test_llama_3_8B_self_no_safetensors(self):
+  def test_llama_3_dot_1_8B_self_no_safetensors(self):
     with Context(SAFETENSORS=0):
       inputs, outputs, completion = self_run(self.prompts, model_desc="8B", version="1")
     self._check_output(inputs, outputs, completion, **self.target["1"]["8B"])
@@ -144,6 +143,7 @@ class TestLlama3Greedy(unittest.TestCase):
     with Context(SAFETENSORS=0):
       inputs, outputs, completion = self_run(self.prompts, model_desc="8B", version="0")
     self._check_output(inputs, outputs, completion, **self.target["0"]["8B"])
+
 
 if __name__ == "__main__":
   unittest.main()
