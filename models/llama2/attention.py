@@ -9,11 +9,11 @@ from models.llama.attention import _fused_attention
 
 
 # n_rep > 1 aka n_kv_heads != n_heads implies MQA [arxiv/2307.09288, A.2.1]
-def repeat_kv(x: torch.Tensor, n_rep: int) -> Tensor:
-    if n_rep == 1: return x
-    bs, seqlen, n_kv_heads, head_dim = x.shape
-    x = x.unsqueeze(-2).expand(-1, -1, -1, n_rep, -1)
-    return x.reshape(bs, seqlen, n_kv_heads * n_rep, head_dim)
+def repeat_kv(x: Tensor, n_rep: int) -> Tensor:
+  if n_rep == 1: return x
+  bs, seqlen, n_kv_heads, head_dim = x.shape
+  x = x.unsqueeze(-2).expand(-1, -1, -1, n_rep, -1)
+  return x.reshape(bs, seqlen, n_kv_heads * n_rep, head_dim)
 
 class Attention(nn.Module):
   def __init__(self, dim: int, n_heads: int, n_kv_heads: int, head_dim: int, max_batch_size: int, max_seq_len: int):

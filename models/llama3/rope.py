@@ -4,7 +4,53 @@ import math
 import torch
 from torch import Tensor, LongTensor
 
-from models.llama3.transformer import Transformer
+# https://github.com/meta-llama/llama-models/blob/main/models/llama3/model.py
+
+def apply_scaling(freqs: Tensor) -> Tensor:
+  # Values obtained from grid search
+  scale_factor = 8
+  low_freq_factor = 1
+  high_freq_factor = 4
+  old_context_len = 8192  # original llama3 length
+
+  low_freq_wavelen = old_context_len / low_freq_factor
+  high_freq_wavelen = old_context_len / high_freq_factor
+
+  wavelen = 2 * torch.pi / freqs
+  new_freqs = torch.where(wavelen > low_freq_wavelen, freqs / scale_factor, freqs)
+  smooth = (old_context_len / wavelen - low_freq_factor) / (high_freq_factor - low_freq_factor)
+  return torch.where(
+    (wavelen >= high_freq_wavelen) & (wavelen <= low_freq_wavelen),
+    (1 - smooth) * new_freqs / scale_factor + smooth * new_freqs,
+    new_freqs,
+  )
+
+def precompute_freqs_cis(dim: int, end: int, theta: float=10000.0, use_scaled: bool=False):
+  freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[: (dim // 2)].float() / dim))
+  t = torch.arange(end, device=freqs.device, dtype=torch.float32)
+  if use_scaled:
+    freqs = apply_scaling(freqs)
+  freqs = torch.outer(t, freqs)
+  freqs_cis = torch.polar(torch.ones_like(freqs), freqs)  # complex64
+  return freqs_cis
+
+
+def reshape_for_broadcast(freqs_cis: Tensor, x: Tensor):
+  ndim = x.ndim
+  assert 0 <= 1 < ndim
+  assert freqs_cis.shape == (x.shape[1], x.shape[-1])
+  shape = [d if i == 1 or i == ndim - 1 else 1 for i, d in enumerate(x.shape)]
+  return freqs_cis.view(*shape)
+
+
+def apply_rotary_emb(xq: Tensor, xk: Tensor, freqs_cis: Tensor) -> tuple[Tensor, Tensor]:
+  xq_ = torch.view_as_complex(xq.float().reshape(*xq.shape[:-1], -1, 2))
+  xk_ = torch.view_as_complex(xk.float().reshape(*xk.shape[:-1], -1, 2))
+  freqs_cis = reshape_for_broadcast(freqs_cis, xq_)
+  xq_out = torch.view_as_real(xq_ * freqs_cis).flatten(3)
+  xk_out = torch.view_as_real(xk_ * freqs_cis).flatten(3)
+  return xq_out.type_as(xq), xk_out.type_as(xk)
+
 
 # TODO: add support for huggingface style RoPE implementation (sliced rotary)
 
@@ -117,21 +163,22 @@ def apply_rotary_pos_emb(q: Tensor, k: Tensor, cos: Tensor, sin: Tensor, unsquee
   k_embed = (k * cos) + (rotate_half(k) * sin)
   return q_embed, k_embed
 
+
 # TODO: add it to the transformer class?
-def rope_usage(self: Transformer, hidden_states: Tensor, position_ids: LongTensor, layer_id: int,
-               dim: int, head_dim: int, rope_theta: float, rope_type: RopeType="default", **rope_kwargs) -> tuple[Tensor, Tensor]:
-  # LlamaModel.forward()
-  # create position embeddings to be shared across the decoder layers
-  position_embeddings = rotary_emb_forward(hidden_states, position_ids, dim, rope_theta, rope_type, **rope_kwargs)
+# def rope_usage(self: Transformer, hidden_states: Tensor, position_ids: LongTensor, layer_id: int,
+#                dim: int, head_dim: int, rope_theta: float, rope_type: RopeType="default", **rope_kwargs) -> tuple[Tensor, Tensor]:
+#   # LlamaModel.forward()
+#   # create position embeddings to be shared across the decoder layers
+#   position_embeddings = rotary_emb_forward(hidden_states, position_ids, dim, rope_theta, rope_type, **rope_kwargs)
 
-  # LlamaDecoderLayer.forward()
-  # LlamaAttention.forward()
-  input_shape = hidden_states.shape[:-1]
-  hidden_shape = (*input_shape, -1, head_dim)
+#   # LlamaDecoderLayer.forward()
+#   # LlamaAttention.forward()
+#   input_shape = hidden_states.shape[:-1]
+#   hidden_shape = (*input_shape, -1, head_dim)
 
-  query_states = self.model.layers[layer_id].self_attn.q_proj(hidden_states).view(hidden_shape).transpose(1, 2)
-  key_states = self.model.layers[layer_id].self_attn.k_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+#   query_states = self.model.layers[layer_id].self_attn.q_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+#   key_states = self.model.layers[layer_id].self_attn.k_proj(hidden_states).view(hidden_shape).transpose(1, 2)
 
-  cos, sin = position_embeddings
-  query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
-  return query_states, key_states
+#   cos, sin = position_embeddings
+#   query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
+#   return query_states, key_states
