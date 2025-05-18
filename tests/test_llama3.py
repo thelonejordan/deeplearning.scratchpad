@@ -1,5 +1,15 @@
 # PYTHONPATH=. python -m unittest tests/test_llama3.py
 
+# https://huggingface.co/docs/transformers/en/model_doc/llama3#usage-tips
+#
+# The Llama3 models were trained using bfloat16, but the original inference uses float16.
+#
+# The original model uses pad_id = -1 which means that there is no padding token.
+# We can’t have the same logic, make sure to add a padding token using tokenizer.add_special_tokens({"pad_token":"<pad>"})
+# and resize the token embedding accordingly. You should also set the model.config.pad_token_id. The embed_tokens layer of
+# the model is initialized with self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size, self.config.padding_idx),
+# which makes sure that encoding the padding token will output zeros, so passing it when initializing is recommended.
+
 import os
 import unittest
 
@@ -19,10 +29,11 @@ def huggingface_run(prompts: list[str], model_desc: str="3B", version: str="2"):
   inputs = tokenizer(prompts, return_tensors="pt")
   input_tokens = inputs["input_ids"].tolist()
   inputs = {k:v.to(DEVICE) for k,v in inputs.items()}
-  model = LlamaForCausalLM.from_pretrained(model_id).to(DEVICE)
+  model = LlamaForCausalLM.from_pretrained(model_id, torch_dtype="float16").to(DEVICE)
+  # Setting `pad_token_id` to `eos_token_id`:50256 for open-end generation.
   model.generation_config.pad_token_id = model.config.eos_token_id
   outputs = model.generate(**inputs, max_length=30, do_sample=False, temperature=None, top_p=None)
-  output_tokens = outputs.cpu().tolist()
+  output_tokens = outputs.tolist()
   texts = tokenizer.batch_decode(outputs, skip_special_tokens=True, clean_up_tokenization_spaces=False)
   return input_tokens, output_tokens, texts
 
@@ -31,7 +42,7 @@ def self_run(prompts: list[str], model_desc: str="3B", version: str="2"):
   max_seq_len = 30
   max_batch_size = 1
   generator = Llama.from_pretrained(
-    max_seq_len=max_seq_len, max_batch_size=max_batch_size, model_desc=model_desc, version=version,
+    max_seq_len=max_seq_len, max_batch_size=max_batch_size, model_desc=model_desc, version=version, force_dtype="float16"
   ).to(DEVICE)
   tokenizer = generator.tokenizer
   tokenizer.pad_id = tokenizer.eos_id
@@ -72,12 +83,9 @@ class TestLlama3Greedy(unittest.TestCase):
           "inputs_target": self.inputs_target,
           "outputs_target": [[128000, 791, 10334, 315, 1375, 44515, 5415, 430, 279, 4732, 315, 3177, 374, 6926, 11, 323, 430, 892, 323, 3634, 527, 8844, 13, 1115, 3445, 430, 279, 4732, 315, 3177]],
           "completion_target": ["The theory of relativity states that the speed of light is constant, and that time and space are relative. This means that the speed of light"]
-          # self_run output
-          # "outputs_target": [[128000, 791, 10334, 315, 1375, 44515, 5415, 430, 279, 4732, 315, 3177, 374, 6926, 11, 323, 430, 433, 374, 279, 1890, 369, 682, 37643, 13, 1115, 3445, 430, 279, 4732]],
-          # "completion_target": ["The theory of relativity states that the speed of light is constant, and that it is the same for all observers. This means that the speed"]
+        },
       },
     }
-  }
 
   def _check_output(self, inputs, outputs, completion, inputs_target, outputs_target, completion_target):
     self.assertEqual(inputs_target, inputs, "input tokens do not match")
@@ -102,13 +110,11 @@ class TestLlama3Greedy(unittest.TestCase):
     inputs, outputs, completion = huggingface_run(self.prompts, model_desc="1B", version="2")
     self._check_output(inputs, outputs, completion, **self.target["2"]["1B"])
 
-  @unittest.expectedFailure
   def test_llama_3_dot_2_1B_self_safetensors(self):
     with Context(SAFETENSORS=1):
       inputs, outputs, completion = self_run(self.prompts, model_desc="1B", version="2")
     self._check_output(inputs, outputs, completion, **self.target["2"]["1B"])
 
-  @unittest.expectedFailure
   def test_llama_3_dot_2_1B_self_no_safetensors(self):
     with Context(SAFETENSORS=0):
       inputs, outputs, completion = self_run(self.prompts, model_desc="1B", version="2")
@@ -132,13 +138,11 @@ class TestLlama3Greedy(unittest.TestCase):
     inputs, outputs, completion = huggingface_run(self.prompts, model_desc="8B", version="0")
     self._check_output(inputs, outputs, completion, **self.target["0"]["8B"])
 
-  @unittest.expectedFailure
   def test_llama_3_8B_self_safetensors(self):
     with Context(SAFETENSORS=1):
       inputs, outputs, completion = self_run(self.prompts, model_desc="8B", version="0")
     self._check_output(inputs, outputs, completion, **self.target["0"]["8B"])
 
-  @unittest.expectedFailure
   def test_llama_3_8B_self_no_safetensors(self):
     with Context(SAFETENSORS=0):
       inputs, outputs, completion = self_run(self.prompts, model_desc="8B", version="0")

@@ -14,7 +14,7 @@ class LlamaConfig:
   multiple_of: int = 256  # make SwiGLU hidden layer size multiple of large power of 2
   ffn_dim_multiplier: Optional[float] = None
   max_position_embeddings: int = 131072
-  use_scaled_rope: bool = False  # TODO: understand use_scaled_rope
+  use_scaled_rope: bool = False
   # these are constant across all models
   original_max_position_embeddings: int = 8192
   vocab_size: int = 128256

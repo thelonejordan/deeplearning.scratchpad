@@ -12,6 +12,7 @@ DEVICE = set_device()
 def huggingface_run(prompts: list[str], model_desc: str="gpt2"):
   os.environ["TOKENIZERS_PARALLELISM"] = "true"
   tokenizer = AutoTokenizer.from_pretrained(model_desc)
+  tokenizer.add_special_tokens({'pad_token': tokenizer.eos_token})
   inputs = tokenizer(prompts, return_tensors="pt")
   input_tokens = inputs["input_ids"].tolist()
   inputs = {k:v.to(DEVICE) for k,v in inputs.items()}
@@ -19,7 +20,7 @@ def huggingface_run(prompts: list[str], model_desc: str="gpt2"):
   # Setting `pad_token_id` to `eos_token_id`:50256 for open-end generation.
   model.generation_config.pad_token_id = model.config.eos_token_id
   outputs = model.generate(**inputs, max_length=30, do_sample=False, temperature=None, top_p=None)
-  output_tokens = outputs.cpu().tolist()
+  output_tokens = outputs.tolist()
   texts = tokenizer.batch_decode(outputs, skip_special_tokens=True, clean_up_tokenization_spaces=False)
   return input_tokens, output_tokens, texts
 
@@ -27,6 +28,7 @@ def self_run(prompts: list[str], model_desc: str="gpt2"):
   max_seq_len = 30
   generator = GPT2.from_pretrained(model_desc).to(DEVICE)
   tokenizer = generator.tokenizer
+  tokenizer.pad_id = tokenizer.eos_id
   inputs = tokenizer.encode_batch(prompts)
   max_new_tokens = max_seq_len - max([len(i) for i in inputs])
   outputs = generate(generator, inputs, max_new_tokens, temperature=0.0)

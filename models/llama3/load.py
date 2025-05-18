@@ -1,4 +1,4 @@
-from typing import Literal, get_args
+from typing import Literal, Optional, get_args
 from pathlib import Path
 from dataclasses import asdict
 
@@ -38,7 +38,7 @@ ModelOptions = Literal['1B','3B','8B','70B']
 VersionOptions = Literal['0','1','2']
 
 def build(max_seq_len: int, max_batch_size: int, seed: int=1,
-          model_desc: ModelOptions='8B', version: VersionOptions='0', instruct: bool=False, safetensors: bool=True):
+          model_desc: ModelOptions='8B', version: VersionOptions='0', instruct: bool=False, safetensors: bool=True, force_dtype: Optional[str]=None):
   assert model_desc in get_args(ModelOptions), f'invalid model_type: {model_desc}'
   assert version in get_args(VersionOptions), f'invalid version: {version}'
   if model_desc in ('8B', '70B'): assert version in ('0', '1')
@@ -47,6 +47,8 @@ def build(max_seq_len: int, max_batch_size: int, seed: int=1,
   prefix = 'Meta-'if version == '0' else ''
   repo_id = f'meta-llama/{prefix}Llama-3{v}-{model_desc}' + ('-Instruct' if instruct else '')
   params = CONFIGS[f"3{v}"][model_desc]
+  if force_dtype is not None:
+    params['torch_dtype'] = force_dtype
   config = LlamaConfig.build(max_seq_len, max_batch_size, **params)
   tokenizer = Tokenizer(_tokenizer_path(repo_id))
   assert config.vocab_size == tokenizer.n_words, f"{config.vocab_size=} != {tokenizer.n_words=}"
@@ -63,6 +65,8 @@ def build(max_seq_len: int, max_batch_size: int, seed: int=1,
     })
   load_state_dict = _safetensors_load if safetensors else _torch_load
   state_dict = load_state_dict(repo_id, keymap)
+  if force_dtype is not None:
+    state_dict = {k:v.to(getattr(torch, force_dtype)) for k,v in state_dict.items()}
 
   if safetensors:
     state_dict = convert_from_huggingface(state_dict, config.dim, config.n_heads, n_kv_heads=config.n_kv_heads)
