@@ -1,5 +1,5 @@
 torch
-huggingface-hub
+huggingface-hub[cli]
 tiktoken
 sentencepiece
 blobfile

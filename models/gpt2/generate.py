@@ -35,7 +35,7 @@ def generate(generator: GPT2, prompt_tokens: List[List[int]], max_new_tokens: in
   max_prompt_size = max([len(t) for t in prompt_tokens])
   total_len = min(n_ctx, max_prompt_size + max_new_tokens)
   batch = torch.full(
-    (len(prompt_tokens), total_len), tokenizer.eot_token, dtype=torch.long, device=device)
+    (len(prompt_tokens), total_len), tokenizer.pad_id, dtype=torch.long, device=device)
   mask = torch.ones_like(batch, dtype=torch.long, device=device)
   for i, toks in enumerate(prompt_tokens):
     batch[i, :len(toks)] = torch.tensor(toks, dtype=torch.long, device=device)

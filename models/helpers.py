@@ -6,9 +6,9 @@ import torch
 
 def timeit(desc: Optional[str]=None, ms: bool=True):
   desc = "Time elapsed" if desc is None else desc
-  def _timeit(func: Callable):
+  def _decorator(func: Callable[...]):
     @functools.wraps(func)
-    def wrapper(*args, **kwargs):
+    def __wrapper(*args, **kwargs):
       start = perf_counter()
       out = func(*args, **kwargs)
       stop = perf_counter()
@@ -18,8 +18,8 @@ def timeit(desc: Optional[str]=None, ms: bool=True):
       else: text = f"{desc}: {diff:.2f}s"
       print(text)
       return out
-    return wrapper
-  return _timeit
+    return __wrapper
+  return _decorator
 
 def set_device(device: Optional[str]=None) -> torch.device:
   if getenv("CUDA") == 1: device = 'cuda'

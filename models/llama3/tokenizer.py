@@ -1,5 +1,4 @@
 from typing import Dict, Union, AbstractSet, Literal, Collection, List, Sequence, cast, Iterator
-import os
 from pathlib import Path
 import tiktoken
 from tiktoken.load import load_tiktoken_bpe
@@ -13,7 +12,7 @@ class Tokenizer:
   pat_str = r"(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+"
 
   def __init__(self, model_path: str):
-    assert os.path.isfile(model_path), model_path
+    assert Path(model_path).is_file(), model_path
 
     mergeable_ranks = load_tiktoken_bpe(model_path)
     num_base_tokens = len(mergeable_ranks)
@@ -45,7 +44,7 @@ class Tokenizer:
     self.bos_id: int = self.special_tokens["<|begin_of_text|>"]
     self.eos_id: int = self.special_tokens["<|end_of_text|>"]
     self.pad_id: int = -1
-    self.stop_tokens = {
+    self.stop_tokens: set[int] = {
       self.special_tokens["<|end_of_text|>"],
       self.special_tokens["<|eot_id|>"],
     }
