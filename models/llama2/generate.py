@@ -103,6 +103,7 @@ def generate(generator: Llama, prompt_tokens: list[list[int]], max_gen_len: int,
     # cut to max gen len
     start = 0 if echo else len(prompt_tokens[i])
     toks = toks[start : len(prompt_tokens[i]) + max_gen_len]
+    probs = None
     if logprobs:
       probs = token_logprobs[i][start : len(prompt_tokens[i]) + max_gen_len]
     # cut to eos tok if any
@@ -112,7 +113,8 @@ def generate(generator: Llama, prompt_tokens: list[list[int]], max_gen_len: int,
       if logprobs:
         probs = probs[:eos_idx]
     out_tokens.append(toks)
-    out_logprobs.append(probs.tolist())
+    if logprobs:
+      out_logprobs.append(probs.tolist())
   return out_tokens, (out_logprobs if logprobs else None)
 
 
