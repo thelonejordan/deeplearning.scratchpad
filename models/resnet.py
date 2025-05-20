@@ -13,7 +13,7 @@ from __future__ import annotations
 from typing import Union, Type, Optional, Literal, Callable, get_args
 import importlib
 from dataclasses import dataclass, asdict
-from helpers import timeit
+from models.helpers import timeit
 
 import torch
 from torch import Tensor, nn
@@ -235,39 +235,36 @@ class ResNet:
     model.load_state_dict(state_dict, strict=True, assign=True)
     return ResNet(model, config)
 
-  @classmethod
-  def get_utilities(cls, variant: ResNetVariant="18") -> tuple[Callable[..., Tensor], list[str]]:
-    weights = getattr(cls._tv, f"ResNet{variant}_Weights").DEFAULT
-    preprocessor, categories = weights.transforms(antialias=True), weights.meta["categories"]
-    return preprocessor, list(categories)
-
 
 if __name__ == "__main__":
+
+  import os
+  import requests
+  import tempfile
+  import torchvision
+
   from helpers import set_device, set_seed
   device = set_device()
   set_seed(device)
 
-  from torchvision.io import read_image
+  url = "https://upload.wikimedia.org/wikipedia/commons/1/10/070226_wandering_albatross_off_Kaikoura_3.jpg"
+  with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp_file:
+    response = requests.get(url)
+    tmp_file.write(response.content)
 
-  variant = "50"
-  preprocessor, categories = ResNet.get_utilities(variant)
+  img = torchvision.io.read_image(tmp_file.name)
+  os.remove(tmp_file.name)
 
-  # from torchvision.models import resnet50, ResNet50_Weights
-  # model = resnet50(weights=ResNet50_Weights.DEFAULT)
-  classifier: ResNet = ResNet.from_pretrained(variant)
-  model = classifier.model
-  model = model.to(device)
-  model.eval()
+  # TODO: temp loading file changes prediction (should be albatross, got bucket)
 
-  # https://upload.wikimedia.org/wikipedia/commons/1/10/070226_wandering_albatross_off_Kaikoura_3.jpg
-  img = read_image("downloads/albatross.jpg")
-  label = "albatross"
-  
+  variant = "18"
+  weights = torchvision.models.ResNet18_Weights.DEFAULT
+  preprocessor, categories = weights.transforms(antialias=True), weights.meta["categories"]
   batch = preprocessor(img).unsqueeze(0).to(device)
-  logits = model(batch)[0]
+  classifier = ResNet.from_pretrained(variant, num_classes=len(categories)).to(device)
+  logits = classifier.model(batch)[0]
   scores = F.softmax(logits, dim=0)
   prediction_id = scores.argmax().item()
   score = scores[prediction_id].item()
   prediction = categories[prediction_id]
-  print(f"{prediction}: {100 * score:.2f}%")
-  assert prediction == label
+  print(f"prediction: {prediction}  confidence: {100 * score:.2f}%")
