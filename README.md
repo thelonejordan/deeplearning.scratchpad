@@ -8,6 +8,7 @@
 - [x] Llama3
 - [x] Mistral
 - [x] Mixtral
+- [ ] QwQ-32B-Preview
 
 ## Vision
 
