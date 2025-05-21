@@ -1,5 +1,6 @@
 from __future__ import annotations
 from typing import Optional, TypedDict
+from tqdm import trange
 
 import torch
 import torch.nn.functional as F
@@ -68,7 +69,7 @@ def generate(generator: Llama, prompt_tokens: list[list[int]], max_gen_len: int,
   prev_pos = 0
   eos_reached = torch.tensor([False] * bsz, device=device)
   input_text_mask = tokens != pad_id
-  for cur_pos in range(min_prompt_len, total_len):
+  for cur_pos in trange(min_prompt_len, total_len, desc="Generating tokens"):
     logits = model.forward(tokens[:, prev_pos:cur_pos], prev_pos)
     if logprobs:
       token_logprobs[:, prev_pos + 1 : cur_pos + 1] = -F.cross_entropy(

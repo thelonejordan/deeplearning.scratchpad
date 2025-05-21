@@ -1,10 +1,11 @@
-from typing import Optional
+from typing import Optional, Callable
 import math
 
 import torch
 from torch import Tensor, nn
 import torch.nn.functional as F
 
+from models.helpers import SDPA
 from models.llama3.rope import apply_rotary_emb
 from models.llama.attention import _fused_attention
 
@@ -21,7 +22,18 @@ def repeat_kv(x: Tensor, n_rep: int) -> Tensor:
   )
 
 
+def _attention(query: Tensor, key: Tensor, value: Tensor, mask: Optional[Tensor], scale: float):
+  scores = torch.matmul(query, key.transpose(2, 3)) * scale
+  if mask is not None:
+    scores = scores + mask  # (bs, n_local_heads, seqlen, cache_len + seqlen)
+  scores = F.softmax(scores.float(), dim=-1).type_as(query)
+  output = torch.matmul(scores, value)  # (bs, n_local_heads, seqlen, head_dim)
+  return output
+
+
 class Attention(nn.Module):
+  _attn_fn: Callable[..., Tensor] = staticmethod(_fused_attention if bool(SDPA) else _attention)
+
   def __init__(self, dim: int, n_heads: int, n_kv_heads: int, head_dim: int, max_batch_size: int, max_seq_len: int):
     super().__init__()
     self.n_heads, self.n_kv_heads, self.head_dim = n_heads, n_kv_heads, head_dim
@@ -58,13 +70,7 @@ class Attention(nn.Module):
     xq = xq.transpose(1, 2)  # (bs, n_local_heads, seqlen, head_dim)
     keys = keys.transpose(1, 2)  # (bs, n_local_heads, cache_len + seqlen, head_dim)
     values = values.transpose(1, 2)  # (bs, n_local_heads, cache_len + seqlen, head_dim)
-
-    # scores = torch.matmul(xq, keys.transpose(2, 3)) / math.sqrt(self.head_dim)
-    # if mask is not None:
-    #   scores = scores + mask  # (bs, n_local_heads, seqlen, cache_len + seqlen)
-    # scores = F.softmax(scores.float(), dim=-1).type_as(xq)
-    # output = torch.matmul(scores, values)  # (bs, n_local_heads, seqlen, head_dim)
-    output = _fused_attention(xq, keys, values, mask, 1.0/math.sqrt(self.head_dim))
+    output = self._attn_fn(xq, keys, values, mask, 1.0/math.sqrt(self.head_dim))
 
     output = output.transpose(1, 2).contiguous().view(bsz, seqlen, -1)
     output = self.o_proj(output)

@@ -1,4 +1,4 @@
-from typing import List
+from tqdm import trange
 
 import torch
 import torch.nn.functional as F
@@ -23,12 +23,12 @@ class Mistral(Generator):
     return Mistral(model, tokenizer, config).to(device)
 
   @torch.no_grad()
-  def generate(self, prompts: List[str], max_tokens: int):
+  def generate(self, prompts: list[str], max_tokens: int):
     return generate(self.model, self.tokenizer, self.device, prompts, max_tokens)
 
 
 @torch.no_grad()
-def generate(model: Transformer, tokenizer: Tokenizer, device: torch.device, prompts: List[str], max_tokens: int):
+def generate(model: Transformer, tokenizer: Tokenizer, device: torch.device, prompts: list[str], max_tokens: int):
   encoded_prompts = [tokenizer.encode(prompt, bos=True, eos=False) for prompt in prompts]
   prompt_lens = [len(x) for x in encoded_prompts]
   min_prompt_len, max_prompt_len = min(prompt_lens), max(prompt_lens)
@@ -44,7 +44,7 @@ def generate(model: Transformer, tokenizer: Tokenizer, device: torch.device, pro
   generated = []
   all_logprobs = [logprobs[:, :-1, :].gather(2, input_tokens[:, 1:min_prompt_len, None]).squeeze(-1)]
   cur_pos = min_prompt_len
-  for _ in range(max_tokens):
+  for _ in trange(max_tokens, desc="Generating tokens"):
     next_token = torch.argmax(logprobs[:, -1, :], dim=-1)
     if cur_pos < input_mask.shape[1]:
       next_token = torch.where(input_mask[:, cur_pos], input_tokens[:, cur_pos], next_token)

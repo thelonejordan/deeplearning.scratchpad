@@ -1,14 +1,17 @@
-from typing import Optional
+from typing import Optional, Callable
 
 import torch
 from torch import Tensor, nn
 
-from models.llama.attention import _fused_attention
+from models.helpers import SDPA
+from models.llama.attention import _attention, _fused_attention
 from models.mistral_nonrolling.rope import apply_rotary_emb
 from models.mistral_nonrolling.attention import repeat_kv
 
 
 class Attention(nn.Module):
+  _attn_fn: Callable[..., Tensor] = staticmethod(_fused_attention if bool(SDPA) else _attention)
+
   def __init__(self, dim: int, head_dim: int, n_heads: int, n_kv_heads: int, sliding_window: int, max_batch_size: int):
     super().__init__()
     self.n_heads, self.head_dim, self.n_kv_heads = n_heads, head_dim, n_kv_heads
@@ -41,12 +44,12 @@ class Attention(nn.Module):
     self.cache_v[:bsz].scatter_(dim=1, index=scatter_pos, src=xv[:, -self.sliding_window:])
 
     if positions.shape[0] > 1:
-      key, value = repeat_kv(xk, xv, self.repeats) # prefill
+      key, value = repeat_kv(xk, xv, self.repeats)  # prefill
     else:
       cur_pos = positions[-1].item() + 1
       key, value = repeat_kv(self.cache_k[:bsz, :cur_pos, ...], self.cache_v[:bsz, :cur_pos, ...], self.repeats)  # type: ignore
 
     query, key, value = xq.transpose(1, 2), key.transpose(1, 2), value.transpose(1, 2)
-    output = _fused_attention(query, key, value, mask, self.scale)
+    output = self._attn_fn(query, key, value, mask, self.scale)
     output = output.transpose(1, 2).contiguous().view(bsz, seqlen, -1)
     return self.wo(output)

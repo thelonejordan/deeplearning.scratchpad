@@ -1,11 +1,12 @@
-from typing import Optional
+from typing import Optional, Callable
 import math
 
 import torch
 from torch import Tensor, nn
 
+from models.helpers import SDPA
 from models.llama.rope import apply_rotary_emb
-from models.llama.attention import _fused_attention
+from models.llama.attention import _attention, _fused_attention
 
 
 # n_rep > 1 aka n_kv_heads != n_heads implies MQA [arxiv/2307.09288, A.2.1]
@@ -16,6 +17,8 @@ def repeat_kv(x: Tensor, n_rep: int) -> Tensor:
   return x.reshape(bs, seqlen, n_kv_heads * n_rep, head_dim)
 
 class Attention(nn.Module):
+  _attn_fn: Callable[..., Tensor] = staticmethod(_fused_attention if bool(SDPA) else _attention)
+
   def __init__(self, dim: int, n_heads: int, n_kv_heads: int, head_dim: int, max_batch_size: int, max_seq_len: int):
     super().__init__()
     self.n_heads, self.n_kv_heads, self.head_dim = n_heads, n_kv_heads, head_dim
@@ -44,10 +47,10 @@ class Attention(nn.Module):
 
     keys = self.cache_k[:bsz, : start_pos + seqlen]
     values = self.cache_v[:bsz, : start_pos + seqlen]
-    keys = repeat_kv(keys, self.n_rep) # (bs, seqlen, n_local_heads, head_dim)
-    values = repeat_kv(values, self.n_rep) # (bs, seqlen, n_local_heads, head_dim)
+    keys = repeat_kv(keys, self.n_rep)  # (bs, seqlen, n_local_heads, head_dim)
+    values = repeat_kv(values, self.n_rep)  # (bs, seqlen, n_local_heads, head_dim)
     xq, keys, values = xq.transpose(1, 2), keys.transpose(1, 2), values.transpose(1, 2)
-    output = _fused_attention(xq, keys, values, mask, 1.0/math.sqrt(self.head_dim))
+    output = self._attn_fn(xq, keys, values, mask, 1.0/math.sqrt(self.head_dim))
 
     output = output.transpose(1, 2).contiguous().view(bsz, seqlen, -1)
     output = self.o_proj(output)

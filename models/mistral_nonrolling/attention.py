@@ -1,21 +1,22 @@
-from typing import Optional, Tuple
+from typing import Optional, Callable
 
 import torch
 from torch import nn, Tensor
 import torch.nn.functional as F
 
+from models.helpers import SDPA
 from models.llama.attention import _fused_attention
 from models.mistral_nonrolling.rope import apply_rotary_emb
 
 
-def repeat_kv(keys: Tensor, values: Tensor, repeats: int, dim: int=2) -> Tuple[Tensor, Tensor]:
+def repeat_kv(keys: Tensor, values: Tensor, repeats: int, dim: int=2) -> tuple[Tensor, Tensor]:
   keys = torch.repeat_interleave(keys, repeats=repeats, dim=dim)
   values = torch.repeat_interleave(values, repeats=repeats, dim=dim)
   return keys, values
 
 
 def _attention(query: Tensor, key: Tensor, value: Tensor, mask: Optional[Tensor], scale: float) -> Tensor:
-  scores = torch.matmul(query, key.transpose(2, 3)) * scale # (bsz, n_heads, seqlen | 1, seqlen)
+  scores = torch.matmul(query, key.transpose(2, 3)) * scale  # (bsz, n_heads, seqlen | 1, seqlen)
   if mask is not None: scores += mask[None, None, ...]
   scores = scores.float()
   scores = F.softmax(scores, dim=-1).type_as(query)
@@ -24,6 +25,8 @@ def _attention(query: Tensor, key: Tensor, value: Tensor, mask: Optional[Tensor]
 
 
 class Attention(nn.Module):
+  _attn_fn: Callable[..., Tensor] = staticmethod(_fused_attention if bool(SDPA) else _attention)
+
   def __init__(self, dim: int, head_dim: int, n_heads: int, n_kv_heads: int, max_seq_len: int, max_batch_size: int):
     super().__init__()
     self.head_dim, self.n_heads, self.n_kv_heads = head_dim, n_heads, n_kv_heads
@@ -53,8 +56,8 @@ class Attention(nn.Module):
       key, value = repeat_kv(xk, xv, self.repeats)
     else:
       cur_pos = positions[-1].item() + 1
-      key, value = repeat_kv(self.cache_k[:bsz, :cur_pos, ...], self.cache_v[:bsz, :cur_pos, ...], self.repeats)  # type: ignore
+      key, value = repeat_kv(self.cache_k[:bsz, :cur_pos, ...], self.cache_v[:bsz, :cur_pos, ...], self.repeats)
     query, key, value = xq.transpose(1, 2), key.transpose(1, 2), value.transpose(1, 2)
-    output = _fused_attention(query, key, value, mask, self.head_dim**-0.5)
+    output = self._attn_fn(query, key, value, mask, self.head_dim**-0.5)
     output = output.transpose(1, 2).contiguous().view(bsz, seqlen, -1)
     return self.wo(output)

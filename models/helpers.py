@@ -6,7 +6,7 @@ import torch
 
 def timeit(desc: Optional[str]=None, ms: bool=True):
   desc = "Time elapsed" if desc is None else desc
-  def _decorator(func: Callable[...]):
+  def _decorator(func: Callable):
     @functools.wraps(func)
     def __wrapper(*args, **kwargs):
       start = perf_counter()
@@ -75,3 +75,4 @@ class ContextVar:
 
 
 SAFETENSORS = ContextVar("SAFETENSORS", 1)
+SDPA = ContextVar("SDPA", 1)

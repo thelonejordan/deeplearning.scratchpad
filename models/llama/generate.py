@@ -1,5 +1,4 @@
-from typing import List
-from tqdm import tqdm
+from tqdm import trange
 
 import torch
 from torch import Tensor
@@ -20,14 +19,14 @@ class Llama(Generator):
     model, tokenizer, config = build(max_seq_len, max_batch_size, model_desc, safetensors=bool(SAFETENSORS))
     return Llama(model, tokenizer, config)
 
-  def text_completion(self, prompts: List[str], max_gen_len: int,
-                      temperature: float=0.8, top_p: float=0.95) -> List[str]:
+  def text_completion(self, prompts: list[str], max_gen_len: int,
+                      temperature: float=0.8, top_p: float=0.95) -> list[str]:
     return text_completion(self, prompts, max_gen_len, temperature, top_p)
 
 
 @torch.inference_mode()
-def generate(generator: Llama, prompt_tokens: List[List[int]],
-             max_gen_len: int, temperature: float=0.8, top_p: float=0.95) -> List[List[int]]:
+def generate(generator: Llama, prompt_tokens: list[list[int]],
+             max_gen_len: int, temperature: float=0.8, top_p: float=0.95) -> list[list[int]]:
   model, tokenizer, device = generator.model, generator.tokenizer, generator.device
   max_batch_size, max_seq_len = generator.config.max_batch_size, generator.config.max_seq_len
   bsz = len(prompt_tokens)
@@ -42,7 +41,7 @@ def generate(generator: Llama, prompt_tokens: List[List[int]],
   input_text_mask = tokens != tokenizer.pad_id
   prev_pos = 0
   model.eval()
-  for cur_pos in tqdm(range(min_prompt_size, total_len), desc='Generating tokens'):
+  for cur_pos in trange(min_prompt_size, total_len, desc='Generating tokens'):
     with torch.no_grad():
       logits = model(tokens[:, prev_pos:cur_pos], prev_pos)
     if temperature > 0:
@@ -59,8 +58,8 @@ def generate(generator: Llama, prompt_tokens: List[List[int]],
 
 
 @torch.inference_mode()
-def text_completion(generator: Llama, prompts: List[str], max_gen_len: int,
-                    temperature: float=0.8, top_p: float=0.95) -> List[str]:
+def text_completion(generator: Llama, prompts: list[str], max_gen_len: int,
+                    temperature: float=0.8, top_p: float=0.95) -> list[str]:
   tokenizer, max_batch_size = generator.tokenizer, generator.config.max_batch_size
   bsz = len(prompts)
   assert bsz <= max_batch_size, (bsz, max_batch_size)
@@ -68,8 +67,8 @@ def text_completion(generator: Llama, prompts: List[str], max_gen_len: int,
   tokens = generate(generator, prompt_tokens, max_gen_len, temperature, top_p)
   decoded = []
   for i, t in enumerate(tokens):
-    t = t[: len(prompt_tokens[i]) + max_gen_len] # cut to max gen len
-    try: t = t[: t.index(tokenizer.eos_id)] # cut to eos tok if any
+    t = t[: len(prompt_tokens[i]) + max_gen_len]  # cut to max gen len
+    try: t = t[: t.index(tokenizer.eos_id)]  # cut to eos tok if any
     except ValueError: pass
     decoded.append(tokenizer.decode(t))
   return decoded

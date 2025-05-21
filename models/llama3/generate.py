@@ -1,5 +1,6 @@
 from __future__ import annotations
 from typing import Optional
+from tqdm import trange
 
 import torch
 import torch.nn.functional as F
@@ -87,7 +88,7 @@ def generate(generator: Llama, prompt_tokens: list[list[int]], max_gen_len: int,
 
   stop_tokens = torch.tensor(list(tokenizer.stop_tokens), device=device)
 
-  for cur_pos in range(min_prompt_len, total_len):
+  for cur_pos in trange(min_prompt_len, total_len, desc="Generating tokens"):
     logits = model.forward(tokens[:, prev_pos:cur_pos], prev_pos)
     if temperature > 0:
       probs = torch.softmax(logits[:, -1] / temperature, dim=-1)

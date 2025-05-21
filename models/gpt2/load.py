@@ -1,16 +1,16 @@
-from typing import Set, Literal, get_args
+from typing import Literal, get_args
 from pathlib import Path
 from dataclasses import asdict
 
 import torch
 import safetensors.torch
-from huggingface_hub import snapshot_download  # type: ignore
+from huggingface_hub import snapshot_download
 
 from models.gpt2.config import GPTConfig, CONFIGS
 from models.gpt2.transformer import Transformer
 from models.gpt2.tokenizer import Tokenizer
 
-def _safetensors_load(repo_id: str, transposed: Set[str]=set(), skip: Set[str]=set()):
+def _safetensors_load(repo_id: str, transposed: set[str]=set(), skip: set[str]=set()):
   ckpt_dir = snapshot_download(repo_id, allow_patterns="*.safetensors")
   checkpoints = sorted(Path(ckpt_dir).glob("*.safetensors"))
   state_dict, filtered_state_dict  = {}, {}
@@ -20,7 +20,7 @@ def _safetensors_load(repo_id: str, transposed: Set[str]=set(), skip: Set[str]=s
     filtered_state_dict[k] = v.t() if any(k.endswith(w) for w in transposed) else v
   return filtered_state_dict
 
-def _torch_load(repo_id: str, transposed: Set[str]=set(), skip: Set[str]=set()):
+def _torch_load(repo_id: str, transposed: set[str]=set(), skip: set[str]=set()):
   ckpt_dir = snapshot_download(repo_id, allow_patterns="pytorch_model*.bin")
   checkpoints = sorted(Path(ckpt_dir).glob("pytorch_model*.bin"))
   state_dict, filtered_state_dict  = {}, {}

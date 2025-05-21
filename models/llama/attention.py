@@ -1,10 +1,11 @@
-from typing import Optional
+from typing import Optional, Callable
 import math
 
 import torch
 from torch import Tensor, nn
 import torch.nn.functional as F
 
+from models.helpers import SDPA
 from models.llama.rope import apply_rotary_emb
 
 
@@ -21,6 +22,8 @@ def _fused_attention(query: Tensor, key: Tensor, value: Tensor, mask: Optional[T
 
 
 class Attention(nn.Module):
+  _attn_fn: Callable[..., Tensor] = staticmethod(_fused_attention if bool(SDPA) else _attention)
+
   def __init__(self, dim: int, n_heads: int, head_dim: int, max_batch_size: int, max_seq_len: int):
     super().__init__()
     self.n_heads, self.head_dim = n_heads, head_dim
@@ -49,7 +52,7 @@ class Attention(nn.Module):
     keys = self.cache_k[:bsz, : start_pos + seqlen]
     values = self.cache_v[:bsz, : start_pos + seqlen]
     xq, keys, values = xq.transpose(1, 2), keys.transpose(1, 2), values.transpose(1, 2)
-    output = _fused_attention(xq, keys, values, mask, 1.0/math.sqrt(self.head_dim))
+    output = self._attn_fn(xq, keys, values, mask, 1.0/math.sqrt(self.head_dim))
 
     output = output.transpose(1, 2).contiguous().view(bsz, seqlen, -1)
     output = self.o_proj(output)

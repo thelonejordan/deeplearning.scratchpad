@@ -1,4 +1,4 @@
-from typing import Dict, Union, AbstractSet, Literal, Collection, List, Sequence, cast, Iterator
+from typing import Dict, Union, AbstractSet, Literal, Collection, Sequence, Iterator, cast
 from pathlib import Path
 import tiktoken
 from tiktoken.load import load_tiktoken_bpe
@@ -52,7 +52,7 @@ class Tokenizer:
 
   def encode(self, s: str, *, bos: bool, eos: bool,
              allowed_special: Union[Literal["all"], AbstractSet[str]] = set(),
-             disallowed_special: Union[Literal["all"], Collection[str]] = ()) -> List[int]:
+             disallowed_special: Union[Literal["all"], Collection[str]] = ()) -> list[int]:
     """
     Encodes a string into a list of token IDs.
 
@@ -89,7 +89,7 @@ class Tokenizer:
       for substr in self._split_whitespaces_or_nonwhitespaces(
         s[i : i + TIKTOKEN_MAX_ENCODE_CHARS], MAX_NO_WHITESPACES_CHARS))
 
-    t: List[int] = []
+    t: list[int] = []
     for substr in substrs:
       t.extend(self.model.encode(
         substr, allowed_special=allowed_special, disallowed_special=disallowed_special))
@@ -110,7 +110,7 @@ class Tokenizer:
       str: The decoded string.
     """
     # Typecast is safe here. Tiktoken doesn't do anything list-related with the sequence.
-    return self.model.decode(cast(List[int], t))
+    return self.model.decode(cast(list[int], t))
 
   @staticmethod
   def _split_whitespaces_or_nonwhitespaces(s: str, max_consecutive_slice_len: int) -> Iterator[str]:
