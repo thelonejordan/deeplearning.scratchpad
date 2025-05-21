@@ -4,6 +4,7 @@
 #
 # You can find all the original Llama checkpoints under the Huggy Llama organization.
 
+import os
 import unittest
 
 import torch
@@ -16,7 +17,7 @@ DEVICE = set_device()
 def huggingface_run(prompts: list[str], model_desc: str="7B"):
   model_desc = {'33B': '30B','70B': '65B'}.get(model_desc, model_desc)
   model_id = f'huggyllama/llama-{model_desc.lower()}'
-  # os.environ["TOKENIZERS_PARALLELISM"] = "true"
+  os.environ["TOKENIZERS_PARALLELISM"] = "true"
   tokenizer = AutoTokenizer.from_pretrained(model_id)
   # tokenizer.add_special_tokens({'pad_token': tokenizer.eos_token})
   inputs = tokenizer(prompts, return_tensors="pt")
@@ -71,14 +72,9 @@ class TestLlamaGreedy(unittest.TestCase):
       inputs, outputs, completion = self_run(self.prompts, model_desc="7B")
     self._check_output(inputs, outputs, completion, **self.target["7B"])
 
-  # TODO: fix this
-  @unittest.expectedFailure
   def test_llama_7B_self_no_safetensors(self):
     with Context(SAFETENSORS=0):
       inputs, outputs, completion = self_run(self.prompts, model_desc="7B")
-    # print(inputs) # [[1, 450, 6368, 310, 14215, 537, 5922, 393]]
-    # print(outputs) # [[1, 450, 6368, 310, 14215, 537, 5922, 393, 278, 6210, 310, 3578, 338, 4868, 297, 599, 297, 814, 616, 16608, 310, 3407, 29889, 13, 13, 1576, 6368, 310, 14215, 537]]
-    # print(completion) # ['The theory of relativity states that the speed of light is constant in all inertial frames of reference.\n\nThe theory of relativity']
     self._check_output(inputs, outputs, completion, **self.target["7B"])
 
 

@@ -71,8 +71,8 @@ def build(max_seq_len: int, max_batch_size: int, model_desc: ModelOptions='7B', 
   load_state_dict = _safetensors_load if safetensors else _torch_load
   state_dict = load_state_dict(repo_id)
 
-  if safetensors:
-    state_dict = convert_from_huggingface(state_dict, config.dim, config.n_heads)
+  # NOTE: torch weights were also permuted for rope in huggingface style
+  state_dict = convert_from_huggingface(state_dict, config.dim, config.n_heads)
 
   default_dtype = torch.get_default_dtype()
   torch.set_default_dtype(getattr(torch, config.torch_dtype))

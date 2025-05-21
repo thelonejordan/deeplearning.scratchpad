@@ -44,6 +44,8 @@ def build(model_desc: ModelOptions='gpt2', safetensors: bool=True):
   tokenizer = Tokenizer()
   config = GPTConfig(**params)
   assert config.vocab_size == tokenizer.n_words, (config.vocab_size, tokenizer.n_words)
+  # https://github.com/huggingface/transformers/issues/21681#issuecomment-1436552397
+  # According to this comment, dtype of a model in PyTorch is always float32, regardless of the dtype of the checkpoint you saved.
   default_dtype = torch.get_default_dtype()
   torch.set_default_dtype(getattr(torch, config.torch_dtype))
   model = Transformer(**asdict(config))
