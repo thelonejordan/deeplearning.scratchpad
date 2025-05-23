@@ -1,8 +1,7 @@
-# PYTORCH_ENABLE_MPS_FALLBACK=1 python3 models/alexnet.py
+# PYTORCH_ENABLE_MPS_FALLBACK=1 python3 models/alexnet_two_tower.py
 
 # Paper: https://papers.nips.cc/paper_files/paper/2012/hash/c399862d3b9d6b76c8436e924a68c45b-Abstract.html
 # Implementation: https://github.com/akrizhevsky/cuda-convnet2
-# Paper: https://arxiv.org/abs/1404.5997
 
 # Introduction ***
 # subsets of ImageNet used in the ILSVRC-2010 and ILSVRC-2012
@@ -13,8 +12,7 @@
 # The Dataset ***
 # ImageNet is a dataset of over 15 million labeled high-resolution images belonging to roughly 22,000 categories
 # ILSVRC uses a subset of ImageNet with roughly 1000 images in each of
-# 1000 categories. In all, there are roughly 1.2 million training images, 50,000 validation images, and
-# 150,000 testing images
+# 1000 categories. In all, there are roughly 1.2 million training images, 50,000 validation images, and 150,000 testing images
 # two error rates:
 # top-1 and top-5, where the top-5 error rate is the fraction of test images for which the correct label
 # is not among the five labels considered most probable by the model
