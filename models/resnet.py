@@ -11,7 +11,6 @@
 
 from __future__ import annotations
 from typing import Union, Type, Optional, Literal, Callable, get_args
-import importlib
 from dataclasses import dataclass, asdict
 from models.helpers import timeit
 
@@ -205,8 +204,6 @@ class ResNetModel(nn.Module):
 
 
 class ResNet:
-  _tv = importlib.import_module("torchvision.models")
-
   def __init__(self, model: ResNetModel, config: ResNetConfig):
     self.model = model
     self.config = config
@@ -221,11 +218,20 @@ class ResNet:
   @classmethod
   @timeit(desc="Load time")
   def from_pretrained(cls, variant: ResNetVariant="18", num_classes: int=1000) -> ResNet:
-    assert variant in get_args(ResNetVariant), ""
-    state_dict = getattr(cls._tv, f"ResNet{variant}_Weights").DEFAULT.get_state_dict()
+    import torchvision.models as tvm
+    assert variant in get_args(ResNetVariant), f"variant must be one of {get_args(ResNetVariant)}, got {variant}"
+    weights = tvm.get_weight(f"ResNet{variant}_Weights.DEFAULT")
+    state_dict = weights.get_state_dict()
     model, config = build(variant, num_classes=num_classes)
     model.load_state_dict(state_dict, strict=True, assign=True)
     return ResNet(model, config)
+
+
+def get_utilities(variant: ResNetVariant="18"):
+  import torchvision.models as tvm
+  weights = tvm.get_weight(f"ResNet{variant}_Weights.DEFAULT")
+  preprocessor, categories = weights.transforms(antialias=True), weights.meta["categories"]
+  return preprocessor, list(categories)
 
 
 if __name__ == "__main__":
@@ -248,8 +254,7 @@ if __name__ == "__main__":
     img = torchvision.io.read_image(tmp_file.name)
 
   variant = "50"
-  weights = torchvision.models.ResNet18_Weights.DEFAULT
-  preprocessor, categories = weights.transforms(antialias=True), weights.meta["categories"]
+  preprocessor, categories = get_utilities(variant)
   batch = preprocessor(img).unsqueeze(0).to(device)
   classifier = ResNet.from_pretrained(variant, num_classes=len(categories)).to(device)
   logits = classifier.model(batch)[0]

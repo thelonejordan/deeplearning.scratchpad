@@ -10,18 +10,12 @@ import torchvision.models as tvm
 from torchvision.io import read_image
 
 from models.helpers import set_device
-from models.resnet import ResNetVariant, ResNet
+from models.resnet import ResNetVariant, ResNet, get_utilities
 
 DEVICE = set_device()
 
-def get_utilities(variant: ResNetVariant="18"):
-  weights = getattr(tvm, f"ResNet{variant}_Weights").DEFAULT
-  preprocessor, categories = weights.transforms(antialias=True), weights.meta["categories"]
-  return preprocessor, list(categories)
-
 
 class TestResNet(unittest.TestCase):
-
   def setUp(self):
     self._mapping = {
       v: (getattr(tvm, f"resnet{v}"), getattr(tvm, f"ResNet{v}_Weights").DEFAULT) for v in get_args(ResNetVariant)
