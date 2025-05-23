@@ -257,6 +257,7 @@ if __name__ == "__main__":
   preprocessor, categories = get_utilities(variant)
   batch = preprocessor(img).unsqueeze(0).to(device)
   classifier = ResNet.from_pretrained(variant, num_classes=len(categories)).to(device)
+  classifier.model.eval()
   logits = classifier.model(batch)[0]
   scores = F.softmax(logits, dim=0)
   prediction_id = scores.argmax().item()

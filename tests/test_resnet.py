@@ -32,8 +32,7 @@ class TestResNet(unittest.TestCase):
       else:
         print(response.content)
         self.skip = True
-    # self.label = "albatross"
-    # self.label = "goldfinch"
+    self.label = "albatross"
 
   def _check(self, x: torch.Tensor, y: torch.Tensor, atol=1e-8, rtol=1e-6):
     self.assertEqual(x.shape, y.shape)
@@ -45,17 +44,18 @@ class TestResNet(unittest.TestCase):
     batch = preprocessor(self.img).unsqueeze(0).to(DEVICE)
     builder, weights = self._mapping[variant]
     model_ref = builder(weights=weights).to(DEVICE)
+    model_ref.eval()
     logits_ref = model_ref(batch)[0]
     del model_ref
-    model = ResNet.from_pretrained(variant=variant).model.to(DEVICE)
+    model = ResNet.from_pretrained(variant=variant).to(DEVICE).model
+    model.eval()
     logits = model(batch)[0]
     del model
     self._check(logits, logits_ref)
     idx_ref = torch.nn.functional.softmax(logits_ref, dim=0).argmax().item()
     idx = torch.nn.functional.softmax(logits, dim=0).argmax().item()
-    # TODO: label check
-    # self.assertEqual(categories[idx_ref], self.label, f"exp: {self.label}, got: {categories[idx_ref]}")
-    # self.assertEqual(categories[idx], self.label, f"exp: {self.label}, got: {categories[idx_ref]}")
+    self.assertEqual(categories[idx_ref], self.label, f"exp: {self.label}, got: {categories[idx_ref]}")
+    self.assertEqual(categories[idx], self.label, f"exp: {self.label}, got: {categories[idx_ref]}")
     self.assertEqual(idx, idx_ref, f"exp: {idx}, got: {idx_ref}")
 
   def test_resnet_18(self):
