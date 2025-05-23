@@ -215,9 +215,9 @@ class ResNet:
     self.model = self.model.to(device)
     return self
 
-  @classmethod
+  @staticmethod
   @timeit(desc="Load time")
-  def from_pretrained(cls, variant: ResNetVariant="18", num_classes: int=1000) -> ResNet:
+  def from_pretrained(variant: ResNetVariant="18", num_classes: int=1000) -> ResNet:
     import torchvision.models as tvm
     assert variant in get_args(ResNetVariant), f"variant must be one of {get_args(ResNetVariant)}, got {variant}"
     weights = tvm.get_weight(f"ResNet{variant}_Weights.DEFAULT")

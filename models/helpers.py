@@ -1,12 +1,14 @@
 from __future__ import annotations
-from typing import Optional, Callable, ClassVar, cast
+from typing import Optional, Callable, ClassVar, TypeVar, cast
 import os, contextlib, functools
 from time import perf_counter
 import torch
 
+R = TypeVar('R')
+
 def timeit(desc: Optional[str]=None, ms: bool=True):
   desc = "Time elapsed" if desc is None else desc
-  def _decorator(func: Callable):
+  def _decorator(func: Callable[..., R]) -> Callable[..., R]:
     @functools.wraps(func)
     def __wrapper(*args, **kwargs):
       start = perf_counter()
