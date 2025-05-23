@@ -177,32 +177,24 @@ class ResNetModel(nn.Module):
 
   def _make_layer(self, block: Union[Type[BasicBlock], Type[Bottleneck]], planes: int, blocks: int,
                   stride: int=1, dilate: bool=False, stride_in_1x1: bool=False) -> nn.Sequential:
-    previous_dilation = self.dilation
-    if dilate:
-      self.dilation *= stride
-      stride = 1
+    dilation = self.dilation
+    if dilate: dilation, stride = dilation * stride, 1
+    in_planes = planes * block.expansion
     layers = []
-    layers.append(block(
-      self.in_planes,
-      planes,
-      stride=stride,
-      groups=self.groups,
-      base_width=self.base_width,
-      dilation=previous_dilation,
-      norm_layer=self._norm_layer,
-      stride_in_1x1=stride_in_1x1
-    ))
-    self.in_planes = planes * block.expansion
-    for _ in range(1, blocks):
+    for idx in range(blocks):
+      _in_planes, _stride, _dilation = in_planes, 1, dilation
+      if idx == 0: _in_planes, _stride, dilation = self.in_planes, stride, self.dilation
       layers.append(block(
-        self.in_planes,
+        _in_planes,
         planes,
+        stride=_stride,
         groups=self.groups,
         base_width=self.base_width,
-        dilation=self.dilation,
+        dilation=_dilation,
         norm_layer=self._norm_layer,
         stride_in_1x1=stride_in_1x1
       ))
+    self.in_planes, self.dilation = in_planes, dilation
     return nn.Sequential(*layers)
 
   def forward(self, x: Tensor) -> Tensor:
@@ -238,7 +230,6 @@ class ResNet:
 
 if __name__ == "__main__":
 
-  import os
   import requests
   import tempfile
   import torchvision
@@ -248,16 +239,15 @@ if __name__ == "__main__":
   set_seed(device)
 
   url = "https://upload.wikimedia.org/wikipedia/commons/1/10/070226_wandering_albatross_off_Kaikoura_3.jpg"
-  with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp_file:
-    response = requests.get(url)
+  with tempfile.NamedTemporaryFile(delete=True, suffix=".jpg") as tmp_file:
+    headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+    response = requests.get(url, headers=headers)
+    assert response.status_code == 200, response.content
     tmp_file.write(response.content)
+    tmp_file.flush()
+    img = torchvision.io.read_image(tmp_file.name)
 
-  img = torchvision.io.read_image(tmp_file.name)
-  os.remove(tmp_file.name)
-
-  # TODO: temp loading file changes prediction (should be albatross, got bucket)
-
-  variant = "18"
+  variant = "50"
   weights = torchvision.models.ResNet18_Weights.DEFAULT
   preprocessor, categories = weights.transforms(antialias=True), weights.meta["categories"]
   batch = preprocessor(img).unsqueeze(0).to(device)
@@ -268,3 +258,5 @@ if __name__ == "__main__":
   score = scores[prediction_id].item()
   prediction = categories[prediction_id]
   print(f"prediction: {prediction}  confidence: {100 * score:.2f}%")
+  label = "albatross"
+  assert prediction == label, f"{prediction_id=}, {prediction=}, {label=}"

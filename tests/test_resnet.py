@@ -14,7 +14,6 @@ from models.resnet import ResNetVariant, ResNet
 
 DEVICE = set_device()
 
-
 def get_utilities(variant: ResNetVariant="18"):
   weights = getattr(tvm, f"ResNet{variant}_Weights").DEFAULT
   preprocessor, categories = weights.transforms(antialias=True), weights.meta["categories"]
@@ -29,16 +28,25 @@ class TestResNet(unittest.TestCase):
     }
     url = "https://upload.wikimedia.org/wikipedia/commons/1/10/070226_wandering_albatross_off_Kaikoura_3.jpg"
     with tempfile.NamedTemporaryFile(delete=True, suffix=".jpg") as tmp_file:
-      response = requests.get(url)
-      tmp_file.write(response.content)
-      self.img = read_image(tmp_file.name)
+      headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+      response = requests.get(url, headers=headers)
+      if response.status_code == 200:
+        self.skip = False
+        tmp_file.write(response.content)
+        tmp_file.flush()
+        self.img = read_image(tmp_file.name)
+      else:
+        print(response.content)
+        self.skip = True
     # self.label = "albatross"
+    # self.label = "goldfinch"
 
-  def _check(self, x: torch.Tensor, y: torch.Tensor, atol=1e-8, rtol=1e-5):
+  def _check(self, x: torch.Tensor, y: torch.Tensor, atol=1e-8, rtol=1e-6):
     self.assertEqual(x.shape, y.shape)
     self.assertTrue(torch.allclose(x, y, atol=atol, rtol=rtol))
 
   def _test_variant(self, variant: str):
+    if self.skip: self.skipTest(f"image download failed")
     preprocessor, categories = get_utilities(variant)
     batch = preprocessor(self.img).unsqueeze(0).to(DEVICE)
     builder, weights = self._mapping[variant]
@@ -51,10 +59,10 @@ class TestResNet(unittest.TestCase):
     self._check(logits, logits_ref)
     idx_ref = torch.nn.functional.softmax(logits_ref, dim=0).argmax().item()
     idx = torch.nn.functional.softmax(logits, dim=0).argmax().item()
-    # TODO: add label check
-    # self.assertEqual(categories[idx_ref], self.label)
-    # self.assertEqual(categories[idx], self.label)
-    self.assertEqual(idx, idx_ref)
+    # TODO: label check
+    # self.assertEqual(categories[idx_ref], self.label, f"exp: {self.label}, got: {categories[idx_ref]}")
+    # self.assertEqual(categories[idx], self.label, f"exp: {self.label}, got: {categories[idx_ref]}")
+    self.assertEqual(idx, idx_ref, f"exp: {idx}, got: {idx_ref}")
 
   def test_resnet_18(self):
     self._test_variant("18")
