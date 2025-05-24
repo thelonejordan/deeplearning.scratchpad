@@ -22,64 +22,71 @@
 # We did not pre-process the images in any other way, except for subtracting the mean activity over the training set
 # from each pixel. So we trained our network on the (centered) raw RGB values of the pixels.
 
+from typing import Optional
 from dataclasses import dataclass
 from functools import partial
+from tqdm import trange
 
 import torch
 from torch import Tensor
 from torch import nn
 
-def init_weights(m: nn.Module):
+
+def init_module(m: nn.Module, val: float=0.):
   if isinstance(m, (nn.Linear, nn.Conv2d)):
     nn.init.normal_(m.weight, mean=0, std=1e-2)
-
-def init_biases(m: nn.Module, val: float=0.):
-  if isinstance(m, (nn.Linear, nn.Conv2d)):
     nn.init.constant_(m.bias, val=val)
+
+
+def convolution(in_channels: int, out_channels: int, kernel_size: int, stride: int=1, padding: int=0,
+                maxpool: bool=True, init_bias: Optional[float]=None) -> nn.Sequential:
+  layers = [
+    nn.Conv2d(in_channels, out_channels, kernel_size, stride=stride, padding=padding),
+    nn.LocalResponseNorm(size=5, alpha=1e-4, beta=0.75, k=2),
+    nn.ReLU(inplace=True),
+  ]
+  if maxpool: layers.append(nn.MaxPool2d(kernel_size=3, stride=2))
+  init_fn = init_module if init_bias is None else partial(init_module, val=init_bias)
+  return nn.Sequential(*layers).apply(init_fn)
+
+
+def fully_connected(in_features: int, out_features: int, final_layer: bool=False, init_bias: Optional[float]=None):
+  layers = []
+  if not final_layer: layers.append(nn.Dropout(0.5))
+  layers.append(nn.Linear(in_features, out_features))
+  if not final_layer: layers.append(nn.ReLU(inplace=True))
+  init_fn = init_module if init_bias is None else partial(init_module, val=init_bias)
+  return nn.Sequential(*layers).apply(init_fn)
+
 
 class AlexNet(nn.Module):
   def __init__(self, num_classes: int=1000):
     super().__init__()
-
-    # these layers have no learnable parameters
-    activation = nn.ReLU()
-    maxpool = nn.MaxPool2d(kernel_size=3, stride=2)
-    norm = nn.LocalResponseNorm(size=5, alpha=1e-4, beta=0.75, k=2)
-
-    self.model = nn.Sequential(
-      # convolutional layer 1
-      nn.Conv2d(in_channels=3, out_channels=96, kernel_size=11, stride=4).apply(init_biases),
-      norm, activation, maxpool,
-      # convolutional layer 2
-      nn.Conv2d(in_channels=96, out_channels=256, kernel_size=3, padding=2).apply(partial(init_biases, val=1.)),
-      norm, activation, maxpool,
-      # convolutional layer 3
-      nn.Conv2d(in_channels=256, out_channels=384, kernel_size=3, padding=1).apply(init_biases),
-      norm, activation,
-      # convolutional layer 4
-      nn.Conv2d(in_channels=384, out_channels=384, kernel_size=3, padding=1).apply(partial(init_biases, val=1.)),
-      norm, activation,
-      # convolutional layer 5
-      nn.Conv2d(in_channels=384, out_channels=256, kernel_size=3, padding=1).apply(partial(init_biases, val=1.)),
-      norm, activation, maxpool,
-      # fully connected layer 1
-      nn.Flatten(start_dim=1), nn.Dropout(0.5), nn.Linear(9216, 4096).apply(partial(init_biases, val=1.)),
-      activation,
-      # fully connected layer 2
-      nn.Dropout(0.5), nn.Linear(4096, 4096).apply(partial(init_biases, val=1.)),
-      activation,
-      # fully connected layer 3
-      nn.Linear(4096, num_classes).apply(init_weights).apply(init_biases)
-    ).apply(init_weights)
+    self.features = nn.Sequential(
+      convolution(3, 96, 11, stride=4),
+      convolution(96, 256, 3, padding=2, init_bias=1.),
+      convolution(256, 384, 3, padding=1, maxpool=False),
+      convolution(384, 384, 3, padding=1, maxpool=False, init_bias=1.),
+      convolution(384, 256, 3, padding=1, init_bias=1.),
+    )
+    self.classifier = nn.Sequential(
+      fully_connected(9216, 4096, init_bias=1.),
+      fully_connected(4096, 4096, init_bias=1.),
+      fully_connected(4096, num_classes, final_layer=True),
+    )
 
   def forward(self, x: Tensor):
-    return self.model(x)
+    x = self.features(x)
+    x = x.flatten(1)
+    x = self.classifier(x)
+    return x
+
 
 @dataclass
 class TrainConfig:
-  epochs: int = 90 # roughy 90 cycles
+  epochs: int = 90  # roughy 90 cycles
   batch_size: int = 128
-  lr: float = 1e-2 # manually adjusted 3 times as validation loss saturated
+  lr: float = 1e-2  # manually adjusted 3 times as validation loss saturated
   decay: float = 5e-4
   momentum: float = 0.9
 
@@ -88,13 +95,14 @@ def train(X_train: Tensor, Y_train: Tensor, num_classes: int, config: TrainConfi
   X_train, Y_train = X_train.to(device), Y_train.to(device)
   model = AlexNet(num_classes).to(device)
   count_params = sum([p.numel() for p in model.parameters() if p.requires_grad])
-  print(f"Parameter Count: {count_params/1e6:.2f} M" ) # should be 60 million
+  print(f"Parameter Count: {count_params/1e6:.2f} M" )  # should be roughly 60 million
+  model.train()
   criterion = nn.CrossEntropyLoss()
   optimizer = torch.optim.SGD(
     model.parameters(), lr=config.lr, weight_decay=config.decay, momentum=config.momentum)
 
   num_batches = X_train.size(0) // config.batch_size
-  for epoch in range(config.epochs):
+  for epoch in (t:=trange(config.epochs)):
     for batch in range(num_batches):
       start, stop = batch * config.batch_size, (batch + 1) * config.batch_size
       out = model(X_train[start:stop])
@@ -104,8 +112,8 @@ def train(X_train: Tensor, Y_train: Tensor, num_classes: int, config: TrainConfi
       loss.backward()
       optimizer.step()
 
-      print(f'Epoch [{epoch+1:3d}/{config.epochs:3d}], Step [{batch+1:3d}/{num_batches:3d}], Loss: {loss.item():.4f}')
-
+      progress = f'Epoch [{epoch+1:3d}/{config.epochs:3d}], Step [{batch+1:3d}/{num_batches:3d}], Loss: {loss.item():.4f}'
+      t.set_description(progress)
   return model
 
 if __name__ == "__main__":
@@ -119,5 +127,5 @@ if __name__ == "__main__":
   sample_Y = torch.randint(0, num_classes, (N,))
   # print(sample_X.shape, sample_Y.shape)
 
-  training_config = TrainConfig(epochs=10, batch_size=8)
-  train(sample_X, sample_Y, num_classes, training_config, device)
+  training_config = TrainConfig(epochs=15, batch_size=8)
+  train(sample_X, sample_Y, num_classes, training_config, device.type)
