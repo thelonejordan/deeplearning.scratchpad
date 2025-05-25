@@ -88,6 +88,26 @@ class AlexNet(nn.Module):
     return n_params
 
 
+# [ImageNet Classification with Deep Convolutional Neural Networks] Section 5
+#
+# We trained our models using stochastic gradient descent with a batch size of 128 examples,
+# momentum of 0.9, and weight decay of 0.0005. We found that this small amount of weight decay was
+# important for the model to learn. In other words, weight decay here is not merely a regularizer:
+# it reduces the model’s training error.
+#
+# We initialized the weights in each layer from a zero-mean Gaussian distribution with standard deviation 0.01.
+# We initialized the neuron biases in the second, fourth, and fifth convolutional layers,
+# as well as in the fully-connected hidden layers, with the constant 1. This initialization accelerates
+# the early stages of learning by providing the ReLUs with positive inputs. We initialized the neuron
+# biases in the remaining layers with the constant 0.
+#
+# We used an equal learning rate for all layers, which we adjusted manually throughout training.
+# The heuristic which we followed was to divide the learning rate by 10 when the validation error
+# rate stopped improving with the current learning rate. The learning rate was initialized at 0.01 and
+# reduced three times prior to termination. We trained the network for roughly 90 cycles through the
+# training set of 1.2 million images, which took five to six days on two NVIDIA GTX 580 3GB GPUs.
+
+
 @dataclass
 class TrainConfig:
   epochs: int = 90  # roughy 90 cycles
