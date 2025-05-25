@@ -118,9 +118,20 @@ class TrainConfig:
   momentum: float = 0.9
 
 
+def update_optimizer_params(optimizer: torch.optim.Optimizer, val_loss: float, eps: float=1e-8):
+  def _update(lr: float, val_loss: float, best_val_loss: float, eps: float):
+    if val_loss < best_val_loss and abs(best_val_loss - val_loss) > eps:
+      lr, best_val_loss = lr / 10, val_loss
+    return lr, best_val_loss
+  best_val_loss = float("inf")
+  for param_grp in optimizer.param_groups:
+    lr, best_val_loss = _update(param_grp["lr"], val_loss, best_val_loss, eps)
+    param_grp["lr"] = lr
+
+
 def train(X_train: Tensor, Y_train: Tensor, num_classes: int, config: TrainConfig=None, device='cpu'):
   config = TrainConfig() if config is None else config
-  X_train, Y_train = X_train.to(device), Y_train.to(device)
+  # X_train, Y_train = X_train.to(device), Y_train.to(device)
   model = AlexNet(num_classes).to(device)
   model.train()
   criterion = nn.CrossEntropyLoss()
@@ -128,31 +139,70 @@ def train(X_train: Tensor, Y_train: Tensor, num_classes: int, config: TrainConfi
     model.parameters(), lr=config.lr, weight_decay=config.decay, momentum=config.momentum
   )
   num_batches = X_train.size(0) // config.batch_size
+  def average_diff(lst, end_idx=0):
+    if len(lst) < 2: return 0.  # No pairs to subtract
+    total_diff = 0.
+    for idx in reversed(range(1, len(lst))):
+      i = (idx + end_idx + 1) % len(lst)
+      # print(idx, i)
+      total_diff += lst[i] - lst[i - 1]
+    return total_diff / (len(lst) - 1)
+  window_size = 4
+  patience = 3
+  max_reductions = 3
+  epochs_no_improve = 0
+  num_reductions = 0
+  factor = 10
+  last_losses = [float("inf")] * window_size
   for epoch in (t:=trange(config.epochs)):
+    loss_value = float("inf")
     for batch in range(num_batches):
       start, stop = batch * config.batch_size, (batch + 1) * config.batch_size
-      out = model(X_train[start:stop])
-      loss: Tensor = criterion(out, Y_train[start:stop])
+      out = model(X_train[start:stop].to(device))
+      loss: Tensor = criterion(out, Y_train[start:stop].to(device))
 
       optimizer.zero_grad()
       loss.backward()
       optimizer.step()
 
-      progress = f'Epoch [{epoch+1:3d}/{config.epochs:3d}], Step [{batch+1:3d}/{num_batches:3d}], Loss: {loss.item():.4f}'
+      loss_value = loss.item()
+      progress = f'Epoch [{epoch+1:3d}/{config.epochs:3d}], Step [{batch+1:3d}/{num_batches:3d}], Loss: {loss_value:.4f}'
       t.set_description(progress)
+    last_losses[epoch % window_size] = loss_value
+    # update optimizer params here
+    avg_diff = average_diff(last_losses, epoch % window_size) if window_size <= epoch+1 else float("-inf")
+    eps = 1e-10
+    if avg_diff < 0 and abs(avg_diff) < eps:
+      epochs_no_improve = 0
+    else:
+      epochs_no_improve += 1
+      if epochs_no_improve >= patience and num_reductions < max_reductions:
+        for param_group in optimizer.param_groups: param_group['lr'] /= float(factor)
+        num_reductions += 1
+        epochs_no_improve = 0
+        print(f"Reducing learning rate by a factor of {factor}")
+    # print(f"{epoch=} {last_losses=} {avg_diff}")
   return model
 
 
 if __name__ == "__main__":
-  from helpers import set_device, set_seed
+  from models.helpers import set_device, set_seed
   device = set_device()
   set_seed(device)
 
   num_classes = 1000
-  N, C, H, W = 32, 3, 224, 224
-  sample_X = torch.randn(N, C, H, W)
-  sample_Y = torch.randint(0, num_classes, (N,))
-  # print(sample_X.shape, sample_Y.shape)
+  sample_X, sample_Y = [], []
+  for i in range(num_classes):
+    N, C, H, W = 1, 3, 224, 224
+    mini_sample_X = torch.randn(C, H, W).unsqueeze(0).expand(N, C, H, W)
+    mini_sample_Y = torch.randint(0, num_classes, (N,))
+    sample_X.append(mini_sample_X)
+    sample_Y.extend([i]*len(mini_sample_X))
+  sample_X = torch.cat(sample_X, dim=0)
+  sample_Y = torch.tensor(sample_Y, dtype=torch.long)
 
-  training_config = TrainConfig(epochs=15, batch_size=8)
+  print(sample_X.shape, sample_Y.shape)
+
+  # training_config = TrainConfig(epochs=90, batch_size=64)
+  training_config = TrainConfig()
   train(sample_X, sample_Y, num_classes, training_config, device.type)
