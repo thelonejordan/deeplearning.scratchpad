@@ -6,6 +6,8 @@ import unittest
 import tempfile
 
 import torch
+from torch import Tensor
+import torch.nn.functional as F
 import torchvision.models as tvm
 from torchvision.io import read_image
 
@@ -34,11 +36,11 @@ class TestResNet(unittest.TestCase):
         self.skip = True
     self.label = "albatross"
 
-  def _check(self, x: torch.Tensor, y: torch.Tensor, atol=1e-8, rtol=1e-6):
+  def _check(self, x: Tensor, y: Tensor, atol=1e-8, rtol=1e-6):
     self.assertEqual(x.shape, y.shape)
     self.assertTrue(torch.allclose(x, y, atol=atol, rtol=rtol))
 
-  def _test_variant(self, variant: str):
+  def _helper_test_variant(self, variant: str):
     if self.skip: self.skipTest(f"image download failed")
     preprocessor, categories = get_utilities(variant)
     batch = preprocessor(self.img).unsqueeze(0).to(DEVICE)
@@ -52,26 +54,26 @@ class TestResNet(unittest.TestCase):
     logits = model(batch)[0]
     del model
     self._check(logits, logits_ref)
-    idx_ref = torch.nn.functional.softmax(logits_ref, dim=0).argmax().item()
-    idx = torch.nn.functional.softmax(logits, dim=0).argmax().item()
+    idx_ref = F.softmax(logits_ref, dim=0).argmax().item()
+    idx = F.softmax(logits, dim=0).argmax().item()
     self.assertEqual(categories[idx_ref], self.label, f"exp: {self.label}, got: {categories[idx_ref]}")
     self.assertEqual(categories[idx], self.label, f"exp: {self.label}, got: {categories[idx_ref]}")
     self.assertEqual(idx, idx_ref, f"exp: {idx}, got: {idx_ref}")
 
   def test_resnet_18(self):
-    self._test_variant("18")
+    self._helper_test_variant("18")
 
   def test_resnet_34(self):
-    self._test_variant("34")
+    self._helper_test_variant("34")
 
   def test_resnet_50(self):
-    self._test_variant("50")
+    self._helper_test_variant("50")
 
   def test_resnet_101(self):
-    self._test_variant("101")
+    self._helper_test_variant("101")
 
   def test_resnet_152(self):
-    self._test_variant("152")
+    self._helper_test_variant("152")
 
 
 if __name__ == "__main__":

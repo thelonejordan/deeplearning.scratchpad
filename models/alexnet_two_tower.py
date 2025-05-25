@@ -1,4 +1,4 @@
-# PYTORCH_ENABLE_MPS_FALLBACK=1 python3 models/alexnet_two_tower.py
+# PYTORCH_ENABLE_MPS_FALLBACK=1 PYTHONPATH=. python3 models/alexnet_two_tower.py
 
 # Paper: https://papers.nips.cc/paper_files/paper/2012/hash/c399862d3b9d6b76c8436e924a68c45b-Abstract.html
 # Implementation: https://github.com/akrizhevsky/cuda-convnet2
@@ -49,10 +49,10 @@ def convolution(in_channels: int, out_channels: int, kernel_size: int, stride: i
   init_fn = init_module if init_bias is None else partial(init_module, val=init_bias)
   return nn.Sequential(*layers).apply(init_fn)
 
-
-def fully_connected(in_features: int, out_features: int, final_layer: bool=False, init_bias: Optional[float]=None):
+def fully_connected(in_features: int, out_features: int, final_layer: bool=False,
+                    init_bias: Optional[float]=None, dropout: float=0.) -> nn.Sequential:
   layers = []
-  if not final_layer: layers.append(nn.Dropout(0.5))
+  if not final_layer: layers.append(nn.Dropout(dropout))
   layers.append(nn.Linear(in_features, out_features))
   if not final_layer: layers.append(nn.ReLU(inplace=True))
   init_fn = init_module if init_bias is None else partial(init_module, val=init_bias)
@@ -60,8 +60,9 @@ def fully_connected(in_features: int, out_features: int, final_layer: bool=False
 
 
 class AlexNet(nn.Module):
-  def __init__(self, num_classes: int=1000):
+  def __init__(self, num_classes: int=1000, dropout: float=0.5):
     super().__init__()
+    # TODO: mention how the layers split into two towers are represented here
     self.features = nn.Sequential(
       convolution(3, 96, 11, stride=4),
       convolution(96, 256, 3, padding=2, init_bias=1.),
@@ -70,10 +71,11 @@ class AlexNet(nn.Module):
       convolution(384, 256, 3, padding=1, init_bias=1.),
     )
     self.classifier = nn.Sequential(
-      fully_connected(9216, 4096, init_bias=1.),
-      fully_connected(4096, 4096, init_bias=1.),
+      fully_connected(9216, 4096, init_bias=1., dropout=dropout),
+      fully_connected(4096, 4096, init_bias=1., dropout=dropout),
       fully_connected(4096, num_classes, final_layer=True),
     )
+    print("number of parameters: %.2fM" % (self.get_num_params()/1e6,))  # should be roughly 60 million
 
   def forward(self, x: Tensor):
     x = self.features(x)
@@ -81,26 +83,30 @@ class AlexNet(nn.Module):
     x = self.classifier(x)
     return x
 
+  def get_num_params(self):
+    n_params = sum(p.numel() for p in self.parameters())
+    return n_params
+
 
 @dataclass
 class TrainConfig:
   epochs: int = 90  # roughy 90 cycles
   batch_size: int = 128
+  # TODO: https://docs.pytorch.org/docs/stable/optim.html#how-to-adjust-learning-rate
   lr: float = 1e-2  # manually adjusted 3 times as validation loss saturated
   decay: float = 5e-4
   momentum: float = 0.9
+
 
 def train(X_train: Tensor, Y_train: Tensor, num_classes: int, config: TrainConfig=None, device='cpu'):
   config = TrainConfig() if config is None else config
   X_train, Y_train = X_train.to(device), Y_train.to(device)
   model = AlexNet(num_classes).to(device)
-  count_params = sum([p.numel() for p in model.parameters() if p.requires_grad])
-  print(f"Parameter Count: {count_params/1e6:.2f} M" )  # should be roughly 60 million
   model.train()
   criterion = nn.CrossEntropyLoss()
   optimizer = torch.optim.SGD(
-    model.parameters(), lr=config.lr, weight_decay=config.decay, momentum=config.momentum)
-
+    model.parameters(), lr=config.lr, weight_decay=config.decay, momentum=config.momentum
+  )
   num_batches = X_train.size(0) // config.batch_size
   for epoch in (t:=trange(config.epochs)):
     for batch in range(num_batches):
@@ -115,6 +121,7 @@ def train(X_train: Tensor, Y_train: Tensor, num_classes: int, config: TrainConfi
       progress = f'Epoch [{epoch+1:3d}/{config.epochs:3d}], Step [{batch+1:3d}/{num_batches:3d}], Loss: {loss.item():.4f}'
       t.set_description(progress)
   return model
+
 
 if __name__ == "__main__":
   from helpers import set_device, set_seed

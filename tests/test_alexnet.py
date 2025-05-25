@@ -5,6 +5,8 @@ import unittest
 import tempfile
 
 import torch
+from torch import Tensor
+import torch.nn.functional as F
 import torchvision.models as tvm
 from torchvision.io import read_image
 
@@ -30,11 +32,11 @@ class TestAlexNet(unittest.TestCase):
         self.skip = True
     self.label = "albatross"
 
-  def _check(self, x: torch.Tensor, y: torch.Tensor, atol=1e-8, rtol=1e-6):
+  def _check(self, x: Tensor, y: Tensor, atol=1e-8, rtol=1e-6):
     self.assertEqual(x.shape, y.shape)
     self.assertTrue(torch.allclose(x, y, atol=atol, rtol=rtol))
 
-  def _test_variant(self):
+  def _helper_test(self):
     if self.skip: self.skipTest(f"image download failed")
     preprocessor, categories = get_utilities()
     batch = preprocessor(self.img).unsqueeze(0).to(DEVICE)
@@ -47,14 +49,14 @@ class TestAlexNet(unittest.TestCase):
     logits = model(batch)[0]
     del model
     self._check(logits, logits_ref)
-    idx_ref = torch.nn.functional.softmax(logits_ref, dim=0).argmax().item()
-    idx = torch.nn.functional.softmax(logits, dim=0).argmax().item()
+    idx_ref = F.softmax(logits_ref, dim=0).argmax().item()
+    idx = F.softmax(logits, dim=0).argmax().item()
     self.assertEqual(categories[idx_ref], self.label, f"exp: {self.label}, got: {categories[idx_ref]}")
     self.assertEqual(categories[idx], self.label, f"exp: {self.label}, got: {categories[idx_ref]}")
     self.assertEqual(idx, idx_ref, f"exp: {idx}, got: {idx_ref}")
 
   def test_alexnet(self):
-    self._test_variant()
+    self._helper_test()
 
 
 if __name__ == "__main__":
