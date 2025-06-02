@@ -47,7 +47,7 @@ def instruct_example():
     [dict(role="system", content=system_prompt), dict(role="user", content="Tell me about the phenomenon of global warming.")],
   ]
 
-  out = generator.chat_completion(dialogs, max_gen_len=64)
+  out = generator.chat_completion(dialogs, max_gen_len=128)
   assert len(out) == len(dialogs)
   print('-' * 50)
   for item in out:
