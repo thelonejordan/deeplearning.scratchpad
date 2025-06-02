@@ -49,8 +49,8 @@ class Llama(Generator):
     return text_completion(self, prompts, temperature, top_p, max_gen_len, logprobs, echo)
 
   def chat_completion(self, dialogs: list[Dialog], temperature: float=0.6, top_p: float=0.9,
-                      max_gen_len: Optional[int]=None, logprobs: bool=False, echo: bool=False):
-    return chat_completion(self, dialogs, temperature, top_p, max_gen_len, logprobs, echo)
+                      max_gen_len: Optional[int]=None, logprobs: bool=False):
+    return chat_completion(self, dialogs, temperature, top_p, max_gen_len, logprobs)
 
 
 @torch.inference_mode()
@@ -229,6 +229,7 @@ def chat_completion(generator: Llama, dialogs: list[Dialog], temperature: float=
 
   prompt_tokens = [generator.formatter.encode_dialog_prompt(dialog) for dialog in dialogs]
   generation_tokens, generation_logprobs = generate(
+    generator,
     prompt_tokens=prompt_tokens,
     max_gen_len=max_gen_len,
     temperature=temperature,

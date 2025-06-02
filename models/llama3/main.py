@@ -36,11 +36,12 @@ def instruct_example():
   generator = Llama.from_pretrained(max_batch_size=2, model_desc='8B', version='0', instruct=True)
   generator = generator.to(device)
 
+  system_prompt = "Answer concisely in not more than 3 lines."
   dialogs = [
-    [{"role": "user", "content": "Simply put, the theory of relativity states that"}],
-    [{"role": "user", "content": "The phenomenon of global warming refers to the"}],
+    [dict(role="system", content=system_prompt), dict(role="user", content="What is theory of relativity?")],
+    [dict(role="system", content=system_prompt), dict(role="user", content="Tell me about the phenomenon of global warming.")],
   ]
-  out = generator.chat_completion(dialogs, max_gen_len=64, temperature=0.9, echo=True)
+  out = generator.chat_completion(dialogs, max_gen_len=256, temperature=0.9)
   assert len(out) == len(dialogs)
   print('-' * 50)
   for item in out:
