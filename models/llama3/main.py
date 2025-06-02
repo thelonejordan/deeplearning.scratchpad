@@ -4,14 +4,14 @@
 # https://github.com/meta-llama/llama-models/blob/main/models/llama3/model.py (for Llama3.2)
 
 from models.llama3.generate import Llama
-from models.helpers import set_device, set_seed
+from models.helpers import set_device, set_seed, BASE
 
-def main():
+def base_example():
 
   device = set_device()
   set_seed(device)
 
-  generator: Llama = Llama.from_pretrained(max_batch_size=2, model_desc='3B', version='2')
+  generator = Llama.from_pretrained(max_batch_size=2, model_desc='3B', version='2')
   generator = generator.to(device)
 
   prompts = [
@@ -28,5 +28,27 @@ def main():
     print('-' * 50)
 
 
+def instruct_example():
+
+  device = set_device()
+  set_seed(device)
+
+  generator = Llama.from_pretrained(max_batch_size=2, model_desc='8B', version='0', instruct=True)
+  generator = generator.to(device)
+
+  dialogs = [
+    [{"role": "user", "content": "Simply put, the theory of relativity states that"}],
+    [{"role": "user", "content": "The phenomenon of global warming refers to the"}],
+  ]
+  out = generator.chat_completion(dialogs, max_gen_len=64, temperature=0.9, echo=True)
+  assert len(out) == len(dialogs)
+  print('-' * 50)
+  for item in out:
+    text = item['generation']["content"]
+    print(text)
+    print('-' * 50)
+
+
 if __name__ == "__main__":
-  main()
+  if bool(BASE): base_example()
+  else: instruct_example()

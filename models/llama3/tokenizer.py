@@ -1,4 +1,4 @@
-from typing import Dict, Union, AbstractSet, Literal, Collection, Sequence, Iterator, cast
+from typing import Dict, TypedDict, Union, AbstractSet, Literal, Collection, Sequence, Iterator, cast
 from pathlib import Path
 import tiktoken
 from tiktoken.load import load_tiktoken_bpe
@@ -23,8 +23,8 @@ class Tokenizer:
       "<|reserved_special_token_1|>",
       "<|reserved_special_token_2|>",
       "<|reserved_special_token_3|>",
-      "<|start_header_id|>",
-      "<|end_header_id|>",
+      "<|start_header_id|>",  # used for instruct model
+      "<|end_header_id|>",  # used for instruct model
       "<|reserved_special_token_4|>",
       "<|eot_id|>",  # end of turn
     ] + [
@@ -135,3 +135,41 @@ class Tokenizer:
           slice_start = i
           current_slice_len = 1
     yield s[slice_start:]
+
+
+Role = Literal["system", "user", "assistant"]
+
+class Message(TypedDict):
+  role: Role
+  content: str
+
+Dialog = Sequence[Message]
+
+class ChatFormat:
+  def __init__(self, tokenizer: Tokenizer):
+    self.tokenizer = tokenizer
+
+  def encode_header(self, message: Message) -> list[int]:
+    tokens = []
+    tokens.append(self.tokenizer.special_tokens["<|start_header_id|>"])
+    tokens.extend(self.tokenizer.encode(message["role"], bos=False, eos=False))
+    tokens.append(self.tokenizer.special_tokens["<|end_header_id|>"])
+    tokens.extend(self.tokenizer.encode("\n\n", bos=False, eos=False))
+    return tokens
+
+  def encode_message(self, message: Message) -> list[int]:
+    tokens = self.encode_header(message)
+    tokens.extend(
+      self.tokenizer.encode(message["content"].strip(), bos=False, eos=False)
+    )
+    tokens.append(self.tokenizer.special_tokens["<|eot_id|>"])
+    return tokens
+
+  def encode_dialog_prompt(self, dialog: Dialog) -> list[int]:
+    tokens = []
+    tokens.append(self.tokenizer.special_tokens["<|begin_of_text|>"])
+    for message in dialog:
+      tokens.extend(self.encode_message(message))
+    # Add the start of an assistant message for the model to complete.
+    tokens.extend(self.encode_header({"role": "assistant", "content": ""}))
+    return tokens
