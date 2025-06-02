@@ -1,7 +1,9 @@
-from typing import Dict, TypedDict, Union, AbstractSet, Literal, Collection, Sequence, Iterator, cast
+from typing import Dict, Union, AbstractSet, Literal, Collection, Sequence, Iterator, cast
 from pathlib import Path
 import tiktoken
 from tiktoken.load import load_tiktoken_bpe
+
+from models.llama2.tokenizer import Message
 
 # https://github.com/meta-llama/llama3/blob/main/llama/tokenizer.py
 
@@ -137,13 +139,8 @@ class Tokenizer:
     yield s[slice_start:]
 
 
-Role = Literal["system", "user", "assistant"]
-
-class Message(TypedDict):
-  role: Role
-  content: str
-
 Dialog = Sequence[Message]
+
 
 class ChatFormat:
   def __init__(self, tokenizer: Tokenizer):
