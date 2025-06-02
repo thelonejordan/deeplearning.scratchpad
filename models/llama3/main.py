@@ -33,7 +33,7 @@ def instruct_example():
   device = set_device()
   set_seed(device)
 
-  generator = Llama.from_pretrained(max_batch_size=2, model_desc='8B', version='0', instruct=True)
+  generator = Llama.from_pretrained(max_batch_size=2, model_desc='3B', version='2', instruct=True)
   generator = generator.to(device)
 
   system_prompt = "Answer concisely in not more than 3 lines."
