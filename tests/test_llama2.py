@@ -2,7 +2,7 @@
 
 # https://huggingface.co/docs/transformers/en/model_doc/llama2#notes
 #
-# The original model uses pad_id = -1 to indicate a padding token. 
+# The original model uses pad_id = -1 to indicate a padding token.
 # The Transformers implementation requires adding a padding token and resizing the token embedding accordingly.
 # tokenizer.add_special_tokens({"pad_token":"<pad>"})
 # # update model config with padding token
@@ -26,14 +26,14 @@ from models.helpers import set_device, Context
 DEVICE = set_device()
 
 def huggingface_run(prompts: list[str], model_desc: str="7B"):
-  model_id = f'meta-llama/Llama-2-{model_desc.lower()}-hf'
+  repo_id = f'meta-llama/Llama-2-{model_desc.lower()}-hf'
   # os.environ["TOKENIZERS_PARALLELISM"] = "true"
-  tokenizer = AutoTokenizer.from_pretrained(model_id)
+  tokenizer = AutoTokenizer.from_pretrained(repo_id)
   # tokenizer.add_special_tokens({'pad_token': tokenizer.eos_token})
   inputs = tokenizer(prompts, return_tensors="pt")
   input_tokens = inputs["input_ids"].tolist()
   inputs = {k:v.to(DEVICE) for k,v in inputs.items()}
-  model = LlamaForCausalLM.from_pretrained(model_id, torch_dtype="float16").to(DEVICE)
+  model = LlamaForCausalLM.from_pretrained(repo_id, torch_dtype="float16").to(DEVICE)
   # model.generation_config.pad_token_id = model.config.eos_token_id
   outputs = model.generate(**inputs, max_length=30, do_sample=False, temperature=None, top_p=None)
   output_tokens = outputs.tolist()

@@ -57,5 +57,6 @@ def instruct_example():
 
 
 if __name__ == "__main__":
-  if bool(BASE): base_example()
-  else: instruct_example()
+  match bool(BASE):
+    case True: base_example()
+    case _: instruct_example()
