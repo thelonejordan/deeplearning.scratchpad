@@ -4,7 +4,7 @@
 # https://github.com/meta-llama/llama-models/blob/main/models/llama3/model.py (for Llama3.2)
 
 from models.llama3.generate import Llama
-from models.helpers import set_device, set_seed, BASE
+from models.helpers import set_device, set_seed, CHAT
 
 def base_example():
 
@@ -51,6 +51,6 @@ def instruct_example():
 
 
 if __name__ == "__main__":
-  match bool(BASE):
-    case True: base_example()
+  match bool(CHAT):
+    case False: base_example()
     case _: instruct_example()

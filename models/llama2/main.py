@@ -10,7 +10,7 @@
 # https://ai.meta.com/blog/large-language-model-llama-meta-ai/
 # https://ai.meta.com/blog/5-steps-to-getting-started-with-llama-2/
 
-from models.helpers import set_device, set_seed, BASE
+from models.helpers import set_device, set_seed, CHAT
 from models.llama2.generate import Llama
 
 def base_example():
@@ -57,6 +57,6 @@ def instruct_example():
 
 
 if __name__ == "__main__":
-  match bool(BASE):
-    case True: base_example()
+  match bool(CHAT):
+    case False: base_example()
     case _: instruct_example()
