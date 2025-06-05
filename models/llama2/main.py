@@ -22,7 +22,7 @@ def base_example():
 
   prompts = [
     "Simply put, the theory of relativity states that",
-    "If Google was an Italian company founded in Milan, it would",
+    "The phenomenon of global warming refers to the",
   ]
 
   out = generator.text_completion(prompts, max_gen_len=64, echo=True)
@@ -43,8 +43,14 @@ def instruct_example():
 
   system_prompt = "Answer concisely in not more than 3 lines."
   dialogs = [
-    [dict(role="system", content=system_prompt), dict(role="user", content="What is theory of relativity?")],
-    [dict(role="system", content=system_prompt), dict(role="user", content="Tell me about the phenomenon of global warming.")],
+    [
+      dict(role="system", content=system_prompt),
+      dict(role="user", content="What is theory of relativity?"),
+    ],
+    [
+      dict(role="system", content=system_prompt),
+      dict(role="user", content="Tell me about the phenomenon of global warming."),
+    ],
   ]
 
   out = generator.chat_completion(dialogs, max_gen_len=128)

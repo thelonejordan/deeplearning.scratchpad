@@ -199,6 +199,9 @@ class TestLlama3ChatFormat(unittest.TestCase):
   def test_llama3_dot_1_chat_format(self):
     self.helper_test_llama3_chat_format(model_desc="8B", version="1")
 
+  def test_llama3_dot_1_chat_format(self):
+    self.helper_test_llama3_chat_format(model_desc="8B", version="0")
+
 
 if __name__ == "__main__":
   unittest.main()

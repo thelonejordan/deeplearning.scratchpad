@@ -38,8 +38,14 @@ def instruct_example():
 
   system_prompt = "Answer concisely in not more than 3 lines."
   dialogs = [
-    [dict(role="system", content=system_prompt), dict(role="user", content="What is theory of relativity?")],
-    [dict(role="system", content=system_prompt), dict(role="user", content="Tell me about the phenomenon of global warming.")],
+    [
+      dict(role="system", content=system_prompt),
+      dict(role="user", content="What is theory of relativity?"),
+    ],
+    [
+      dict(role="system", content=system_prompt),
+      dict(role="user", content="Tell me about the phenomenon of global warming."),
+    ],
   ]
   out = generator.chat_completion(dialogs, max_gen_len=256, temperature=0.9)
   assert len(out) == len(dialogs)
