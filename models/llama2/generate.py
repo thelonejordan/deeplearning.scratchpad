@@ -8,7 +8,7 @@ import torch.nn.functional as F
 from models.helpers import Generator, timeit, SAFETENSORS
 from models.llama.tokenizer import Tokenizer
 from models.llama2.tokenizer import Dialog, Message
-from models.llama2.tokenizer import B_INST, E_INST, B_SYS, E_SYS, SPECIAL_TAGS, UNSAFE_ERROR
+from models.llama2.tokenizer import encode_dialog_prompt, SPECIAL_TAGS, UNSAFE_ERROR
 from models.llama2.transformer import Transformer
 from models.llama.config import LlamaConfig
 from models.llama2.load import build, ModelOptions
@@ -223,31 +223,7 @@ def chat_completion(generator: Llama, dialogs: list[Dialog], temperature: float=
     unsafe_requests.append(
       any([tag in msg["content"] for tag in SPECIAL_TAGS for msg in dialog])
     )
-    if dialog[0]["role"] == "system":
-      dialog = [
-        {
-          "role": dialog[1]["role"],
-          "content": B_SYS + dialog[0]["content"] + E_SYS + dialog[1]["content"],
-        }
-      ] + dialog[2:]
-    assert all([msg["role"] == "user" for msg in dialog[::2]]) and all([msg["role"] == "assistant" for msg in dialog[1::2]]), (
-      "model only supports 'system', 'user' and 'assistant' roles, "
-      "starting with 'system', then 'user' and alternating (u/a/u/a/u...)"
-    )
-    dialog_tokens: list[int] = sum(
-      [
-        generator.tokenizer.encode(
-          f"{B_INST} {(prompt['content']).strip()} {E_INST} {(answer['content']).strip()} ", bos=True, eos=True)
-        for prompt, answer in zip(dialog[::2], dialog[1::2])
-      ],
-      [],
-    )
-    assert dialog[-1]["role"] == "user", f"Last message must be from user, got {dialog[-1]['role']}"
-    dialog_tokens += generator.tokenizer.encode(
-      f"{B_INST} {(dialog[-1]['content']).strip()} {E_INST}",
-      bos=True,
-      eos=False,
-    )
+    dialog_tokens = encode_dialog_prompt(generator.tokenizer, dialog)
     prompt_tokens.append(dialog_tokens)
 
   generation_tokens, generation_logprobs = generate(

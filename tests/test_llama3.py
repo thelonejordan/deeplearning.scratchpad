@@ -58,7 +58,7 @@ def self_run(prompts: list[str], model_desc: str="3B", version: str="2"):
   texts = [tokenizer.decode(toks) for toks in outputs_]
   return inputs, outputs, texts
 
-@unittest.skip("")
+
 class TestLlama3Greedy(unittest.TestCase):
   def setUp(self):
     self.prompts = ["The theory of relativity states that"]
@@ -171,8 +171,16 @@ class TestLlama3ChatFormat(unittest.TestCase):
   def setUp(self):
     system_prompt = "You are a truthful and helpful assistant."
     self.dialogs = [
-      [dict(role="system", content=system_prompt), dict(role="user", content="What is theory of relativity?")],
-      [dict(role="system", content=system_prompt), dict(role="user", content="Tell me about the phenomenon of global warming.")],
+      [
+        dict(role="system", content=system_prompt),
+        dict(role="user", content="What is theory of relativity?")
+      ],
+      [
+        dict(role="system", content=system_prompt),
+        dict(role="user", content="Hi"),
+        dict(role="assistant", content="Hello, how may I assist you?"),
+        dict(role="user", content="Tell me about the phenomenon of global warming.")
+      ],
     ]
 
   def helper_test_llama3_chat_format(self, model_desc: str, version: str):
