@@ -22,15 +22,13 @@ import unittest
 from transformers import AutoTokenizer, LlamaForCausalLM
 from models.llama2.generate import generate, Llama
 from models.llama2.tokenizer import encode_dialog_prompt, preprocess_dialog
+from models.llama2.load import huggingface_repo_id
 from models.llama.tokenizer import Tokenizer
 from models.llama.load import _tokenizer_path
 from models.helpers import set_device, Context
 
 DEVICE = set_device()
 
-
-def huggingface_repo_id(model_desc: str="7B"):
-  return f'meta-llama/Llama-2-{model_desc.lower()}-hf'
 
 def huggingface_run(prompts: list[str], model_desc: str="7B"):
   repo_id = huggingface_repo_id(model_desc)
@@ -124,7 +122,7 @@ class TestLlama2ChatFormat(unittest.TestCase):
     ]
 
   def helper_test_llama2_chat_format(self, model_desc: str):
-    repo_id = huggingface_repo_id(model_desc)
+    repo_id = huggingface_repo_id(model_desc, chat=True)
     tokenizer = Tokenizer(_tokenizer_path(repo_id))
     tokenizer_hf = AutoTokenizer.from_pretrained(repo_id)
     tokenizer_hf.chat_template = LLAMA_CHAT_TEMPLATE

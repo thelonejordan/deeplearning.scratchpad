@@ -35,10 +35,13 @@ def _tokenizer_path(repo_id: str):
 
 ModelOptions = Literal['7B','13B','70B']
 
-def build(max_seq_len: int, max_batch_size: int, model_desc: ModelOptions='7B', chat: bool=False, safetensors: bool=True):
+def huggingface_repo_id(model_desc: str="7B", chat: bool=False, safetensors: bool=True):
   assert model_desc in get_args(ModelOptions), f'invalid model_type: {model_desc}'
-  repo_id = f'meta-llama/Llama-2-{model_desc.lower()}'
-  repo_id += ('-chat' if chat else '') + ('-hf' if safetensors else '')
+  suffix = ('-chat' if chat else '') + ('-hf' if safetensors else '')
+  return f'meta-llama/Llama-2-{model_desc.lower()}{suffix}'
+
+def build(max_seq_len: int, max_batch_size: int, model_desc: ModelOptions='7B', chat: bool=False, safetensors: bool=True):
+  repo_id = huggingface_repo_id(model_desc, chat, safetensors)
   params = CONFIGS[model_desc]
   config = LlamaConfig.build(max_seq_len, max_batch_size, **params)
   tokenizer = Tokenizer(_tokenizer_path(repo_id))

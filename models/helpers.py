@@ -78,4 +78,4 @@ class ContextVar:
 
 SAFETENSORS = ContextVar("SAFETENSORS", 1)
 SDPA = ContextVar("SDPA", 1)
-CHAT = ContextVar("BASE", 0)
+CHAT = ContextVar("CHAT", 0)

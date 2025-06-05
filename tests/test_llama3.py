@@ -16,16 +16,11 @@ import unittest
 from transformers import AutoTokenizer, LlamaForCausalLM
 from models.llama3.generate import generate, Llama
 from models.llama3.tokenizer import Tokenizer, ChatFormat
-from models.llama3.load import _tokenizer_path
+from models.llama3.load import _tokenizer_path, huggingface_repo_id
 from models.helpers import set_device, Context
 
 DEVICE = set_device()
 
-
-def huggingface_repo_id(model_desc: str="3B", version: str="2"):
-  prefix = "Meta-" if version=="0" else ""
-  v = "" if version=="0" else f".{version}"
-  return f"meta-llama/{prefix}Llama-3{v}-{model_desc}"
 
 def huggingface_run(prompts: list[str], model_desc: str="3B", version: str="2"):
   repo_id = huggingface_repo_id(model_desc, version)
@@ -184,7 +179,7 @@ class TestLlama3ChatFormat(unittest.TestCase):
     ]
 
   def helper_test_llama3_chat_format(self, model_desc: str, version: str):
-    repo_id = huggingface_repo_id(model_desc, version)
+    repo_id = huggingface_repo_id(model_desc, version, instruct=True)
     tokenizer = Tokenizer(_tokenizer_path(repo_id))
     formatter = ChatFormat(tokenizer)
     tokenizer_hf = AutoTokenizer.from_pretrained(repo_id)
