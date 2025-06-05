@@ -2,7 +2,7 @@
 
 # https://huggingface.co/docs/transformers/en/model_doc/llama2#notes
 #
-# The original model uses pad_id = -1 to indicate a padding token. 
+# The original model uses pad_id = -1 to indicate a padding token.
 # The Transformers implementation requires adding a padding token and resizing the token embedding accordingly.
 # tokenizer.add_special_tokens({"pad_token":"<pad>"})
 # # update model config with padding token
@@ -21,19 +21,24 @@ import unittest
 
 from transformers import AutoTokenizer, LlamaForCausalLM
 from models.llama2.generate import generate, Llama
+from models.llama2.tokenizer import encode_dialog_prompt, preprocess_dialog
+from models.llama2.load import huggingface_repo_id
+from models.llama.tokenizer import Tokenizer
+from models.llama.load import _tokenizer_path
 from models.helpers import set_device, Context
 
 DEVICE = set_device()
 
+
 def huggingface_run(prompts: list[str], model_desc: str="7B"):
-  model_id = f'meta-llama/Llama-2-{model_desc.lower()}-hf'
+  repo_id = huggingface_repo_id(model_desc)
   # os.environ["TOKENIZERS_PARALLELISM"] = "true"
-  tokenizer = AutoTokenizer.from_pretrained(model_id)
+  tokenizer = AutoTokenizer.from_pretrained(repo_id)
   # tokenizer.add_special_tokens({'pad_token': tokenizer.eos_token})
   inputs = tokenizer(prompts, return_tensors="pt")
   input_tokens = inputs["input_ids"].tolist()
   inputs = {k:v.to(DEVICE) for k,v in inputs.items()}
-  model = LlamaForCausalLM.from_pretrained(model_id, torch_dtype="float16").to(DEVICE)
+  model = LlamaForCausalLM.from_pretrained(repo_id, torch_dtype="float16").to(DEVICE)
   # model.generation_config.pad_token_id = model.config.eos_token_id
   outputs = model.generate(**inputs, max_length=30, do_sample=False, temperature=None, top_p=None)
   output_tokens = outputs.tolist()
@@ -86,6 +91,48 @@ class TestLlama2Greedy(unittest.TestCase):
     with Context(SAFETENSORS=0):
       inputs, outputs, completion = self_run(self.prompts, model_desc="7B")
     self._check_output(inputs, outputs, completion, **self.target["7B"])
+
+
+# https://huggingface.co/docs/transformers/main/en/chat_templating_writing
+
+LLAMA_CHAT_TEMPLATE = r"""
+{%- for message in messages %}
+    {%- if message['role'] == 'user' %}
+        {{- '[INST]' + ' ' + message['content'] + ' ' + '[/INST]'}}
+    {%- elif message['role'] == 'assistant' %}
+        {{- ' ' + message['content'] + '  '}}
+    {%- endif %}
+{%- endfor %}
+"""
+
+class TestLlama2ChatFormat(unittest.TestCase):
+  def setUp(self):
+    system_prompt = "You are a truthful and helpful assistant."
+    self.dialogs = [
+      [
+        dict(role="system", content=system_prompt),
+        dict(role="user", content="What is theory of relativity?")
+      ],
+      [
+        dict(role="system", content=system_prompt),
+        dict(role="user", content="Hi"),
+        dict(role="assistant", content="Hello, how may I assist you?"),
+        dict(role="user", content="Tell me about the phenomenon of global warming.")
+      ],
+    ]
+
+  def helper_test_llama2_chat_format(self, model_desc: str):
+    repo_id = huggingface_repo_id(model_desc, chat=True)
+    tokenizer = Tokenizer(_tokenizer_path(repo_id))
+    tokenizer_hf = AutoTokenizer.from_pretrained(repo_id)
+    tokenizer_hf.chat_template = LLAMA_CHAT_TEMPLATE
+    formatted_dialogs_self = [tokenizer.decode(encode_dialog_prompt(tokenizer, d)) for d in self.dialogs]
+    dialogs = [preprocess_dialog(d) for d in self.dialogs]
+    formatted_dialogs_hf = tokenizer_hf.apply_chat_template(dialogs, tokenize=False)
+    assert formatted_dialogs_self == formatted_dialogs_hf, "chat format mismatch"
+
+  def test_llama2_chat_format(self):
+    self.helper_test_llama2_chat_format(model_desc="7B")
 
 
 if __name__ == "__main__":

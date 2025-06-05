@@ -16,14 +16,14 @@ DEVICE = set_device()
 
 def huggingface_run(prompts: list[str], model_desc: str="7B"):
   model_desc = {'33B': '30B','70B': '65B'}.get(model_desc, model_desc)
-  model_id = f'huggyllama/llama-{model_desc.lower()}'
+  repo_id = f'huggyllama/llama-{model_desc.lower()}'
   os.environ["TOKENIZERS_PARALLELISM"] = "true"
-  tokenizer = AutoTokenizer.from_pretrained(model_id)
+  tokenizer = AutoTokenizer.from_pretrained(repo_id)
   # tokenizer.add_special_tokens({'pad_token': tokenizer.eos_token})
   inputs = tokenizer(prompts, return_tensors="pt")
   input_tokens = inputs["input_ids"].tolist()
   inputs = {k:v.to(DEVICE) for k,v in inputs.items()}
-  model = LlamaForCausalLM.from_pretrained(model_id).to(DEVICE, dtype=torch.float16)
+  model = LlamaForCausalLM.from_pretrained(repo_id).to(DEVICE, dtype=torch.float16)
   # model.generation_config.pad_token_id = model.config.eos_token_id
   outputs = model.generate(**inputs, max_length=30, do_sample=False, temperature=None, top_p=None)
   output_tokens = outputs.tolist()

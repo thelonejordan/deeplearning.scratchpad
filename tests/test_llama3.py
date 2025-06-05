@@ -15,21 +15,22 @@ import unittest
 
 from transformers import AutoTokenizer, LlamaForCausalLM
 from models.llama3.generate import generate, Llama
+from models.llama3.tokenizer import Tokenizer, ChatFormat
+from models.llama3.load import _tokenizer_path, huggingface_repo_id
 from models.helpers import set_device, Context
 
 DEVICE = set_device()
 
+
 def huggingface_run(prompts: list[str], model_desc: str="3B", version: str="2"):
-  prefix = "Meta-" if version=="0" else ""
-  v = "" if version=="0" else f".{version}"
-  model_id = f"meta-llama/{prefix}Llama-3{v}-{model_desc}"
+  repo_id = huggingface_repo_id(model_desc, version)
   os.environ["TOKENIZERS_PARALLELISM"] = "true"
-  tokenizer = AutoTokenizer.from_pretrained(model_id)
+  tokenizer = AutoTokenizer.from_pretrained(repo_id)
   tokenizer.add_special_tokens({'pad_token': tokenizer.eos_token})
   inputs = tokenizer(prompts, return_tensors="pt")
   input_tokens = inputs["input_ids"].tolist()
   inputs = {k:v.to(DEVICE) for k,v in inputs.items()}
-  model = LlamaForCausalLM.from_pretrained(model_id, torch_dtype="float16").to(DEVICE)
+  model = LlamaForCausalLM.from_pretrained(repo_id, torch_dtype="float16").to(DEVICE)
   # Setting `pad_token_id` to `eos_token_id`:50256 for open-end generation.
   model.generation_config.pad_token_id = model.config.eos_token_id
   outputs = model.generate(**inputs, max_length=30, do_sample=False, temperature=None, top_p=None)
@@ -147,6 +148,54 @@ class TestLlama3Greedy(unittest.TestCase):
     with Context(SAFETENSORS=0):
       inputs, outputs, completion = self_run(self.prompts, model_desc="8B", version="0")
     self._check_output(inputs, outputs, completion, **self.target["0"]["8B"])
+
+
+# https://huggingface.co/docs/transformers/main/en/chat_templating_writing
+
+LLAMA_CHAT_TEMPLATE = r"""
+{{- bos_token }}
+{%- for message in messages %}
+    {{- '<|start_header_id|>' + message['role'] + '<|end_header_id|>\n\n' + message['content'] + '<|eot_id|>'}}
+{%- endfor %}
+{%- if add_generation_prompt %}
+    {{- '<|start_header_id|>assistant<|end_header_id|>\n\n'}}
+{%- endif %}
+"""
+
+class TestLlama3ChatFormat(unittest.TestCase):
+  def setUp(self):
+    system_prompt = "You are a truthful and helpful assistant."
+    self.dialogs = [
+      [
+        dict(role="system", content=system_prompt),
+        dict(role="user", content="What is theory of relativity?")
+      ],
+      [
+        dict(role="system", content=system_prompt),
+        dict(role="user", content="Hi"),
+        dict(role="assistant", content="Hello, how may I assist you?"),
+        dict(role="user", content="Tell me about the phenomenon of global warming.")
+      ],
+    ]
+
+  def helper_test_llama3_chat_format(self, model_desc: str, version: str):
+    repo_id = huggingface_repo_id(model_desc, version, instruct=True)
+    tokenizer = Tokenizer(_tokenizer_path(repo_id))
+    formatter = ChatFormat(tokenizer)
+    tokenizer_hf = AutoTokenizer.from_pretrained(repo_id)
+    tokenizer_hf.chat_template = LLAMA_CHAT_TEMPLATE
+    formatted_dialogs_self = [tokenizer.decode(formatter.encode_dialog_prompt(d)) for d in self.dialogs]
+    formatted_dialogs_hf = tokenizer_hf.apply_chat_template(self.dialogs, tokenize=False, add_generation_prompt=True)
+    assert formatted_dialogs_self == formatted_dialogs_hf, "chat format mismatch"
+
+  def test_llama3_dot_2_chat_format(self):
+    self.helper_test_llama3_chat_format(model_desc="1B", version="2")
+
+  def test_llama3_dot_1_chat_format(self):
+    self.helper_test_llama3_chat_format(model_desc="8B", version="1")
+
+  def test_llama3_dot_1_chat_format(self):
+    self.helper_test_llama3_chat_format(model_desc="8B", version="0")
 
 
 if __name__ == "__main__":
