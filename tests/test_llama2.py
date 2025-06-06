@@ -50,7 +50,7 @@ def self_run(prompts: list[str], model_desc: str="7B"):
   max_seq_len = 30
   max_batch_size = 1
   generator = Llama.from_pretrained(
-    max_seq_len=max_seq_len, max_batch_size=max_batch_size, model_desc=model_desc
+    max_seq_len=max_seq_len, max_batch_size=max_batch_size, model_desc=model_desc, force_dtype="float16"
   ).to(DEVICE)
   tokenizer = generator.tokenizer
   inputs = [tokenizer.encode(s, bos=True, eos=False) for s in prompts]

@@ -1,4 +1,4 @@
-from typing import Literal, get_args
+from typing import Literal, Optional, get_args
 from pathlib import Path
 from dataclasses import asdict
 from huggingface_hub import snapshot_download
@@ -40,9 +40,11 @@ def huggingface_repo_id(model_desc: str="7B", chat: bool=False, safetensors: boo
   suffix = ('-chat' if chat else '') + ('-hf' if safetensors else '')
   return f'meta-llama/Llama-2-{model_desc.lower()}{suffix}'
 
-def build(max_seq_len: int, max_batch_size: int, model_desc: ModelOptions='7B', chat: bool=False, safetensors: bool=True):
+def build(max_seq_len: int, max_batch_size: int, model_desc: ModelOptions='7B', chat: bool=False, safetensors: bool=True, force_dtype: Optional[str]=None):
   repo_id = huggingface_repo_id(model_desc, chat, safetensors)
   params = CONFIGS[model_desc]
+  if force_dtype is not None:
+    params['torch_dtype'] = force_dtype
   config = LlamaConfig.build(max_seq_len, max_batch_size, **params)
   tokenizer = Tokenizer(_tokenizer_path(repo_id))
   assert config.vocab_size == tokenizer.n_words, f"{config.vocab_size=} != {tokenizer.n_words=}"

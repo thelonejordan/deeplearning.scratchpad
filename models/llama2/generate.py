@@ -21,8 +21,14 @@ class Llama(Generator):
 
   @staticmethod
   @timeit(desc="Load time", ms=False)
-  def from_pretrained(max_seq_len: int=512, max_batch_size: int=8, model_desc: ModelOptions='7B', chat: bool=False) -> Llama:
-    model, tokenizer, config = build(max_seq_len, max_batch_size, model_desc, chat, safetensors=bool(SAFETENSORS))
+  def from_pretrained(max_seq_len: int=512, max_batch_size: int=8,
+                      model_desc: ModelOptions='7B', chat: bool=False,
+                      force_dtype: Optional[str]=None) -> Llama:
+    model, tokenizer, config = build(
+      max_seq_len, max_batch_size,
+      model_desc, chat,
+      safetensors=bool(SAFETENSORS), force_dtype=force_dtype
+    )
     return Llama(model, tokenizer, config)
 
   def text_completion(self, prompts: list[str], temperature: float=0.6, top_p: float=0.9,
