@@ -15,18 +15,6 @@ from models.llama2.load import build, ModelOptions
 from models.llama.generate import sample_top_p
 
 
-class CompletionPrediction(TypedDict, total=False):
-  generation: str
-  tokens: list[str]  # not required
-  logprobs: list[float]  # not required
-
-
-class ChatPrediction(TypedDict, total=False):
-  generation: Message
-  tokens: list[str]  # not required
-  logprobs: list[float]  # not required
-
-
 class Llama(Generator):
   def __init__(self, model: Transformer, tokenizer: Tokenizer, config: LlamaConfig):
     self.model, self.tokenizer, self.config = model, tokenizer, config
@@ -139,6 +127,12 @@ def generate(generator: Llama, prompt_tokens: list[list[int]], max_gen_len: int,
 
 class CompletionPrediction(TypedDict, total=False):
   generation: str
+  tokens: list[str]  # not required
+  logprobs: list[float]  # not required
+
+
+class ChatPrediction(TypedDict, total=False):
+  generation: Message
   tokens: list[str]  # not required
   logprobs: list[float]  # not required
 

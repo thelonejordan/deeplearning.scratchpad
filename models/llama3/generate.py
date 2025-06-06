@@ -1,29 +1,17 @@
 from __future__ import annotations
-from typing import Optional, TypedDict
+from typing import Optional
 from tqdm import trange
 
 import torch
 import torch.nn.functional as F
 
 from models.helpers import Generator, timeit, SAFETENSORS
-from models.llama3.tokenizer import Tokenizer, Dialog, Message, ChatFormat
+from models.llama3.tokenizer import Tokenizer, Dialog, ChatFormat
 from models.llama3.transformer import Transformer
 from models.llama3.config import LlamaConfig
 from models.llama3.load import build, ModelOptions, VersionOptions
+from models.llama2.generate import CompletionPrediction, ChatPrediction
 from models.llama.generate import sample_top_p
-from models.llama2.generate import CompletionPrediction
-
-
-class CompletionPrediction(TypedDict, total=False):
-  generation: str
-  tokens: list[str]  # not required
-  logprobs: list[float]  # not required
-
-
-class ChatPrediction(TypedDict, total=False):
-  generation: Message
-  tokens: list[str]  # not required
-  logprobs: list[float]  # not required
 
 
 class Llama(Generator):
