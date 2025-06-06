@@ -13,6 +13,8 @@ from models.llama.generate import generate, Llama
 from models.helpers import set_device, Context
 
 DEVICE = set_device()
+MAX_SEQ_LEN = 48
+
 
 def huggingface_run(prompts: list[str], model_desc: str="7B"):
   model_desc = {'33B': '30B','70B': '65B'}.get(model_desc, model_desc)
@@ -25,14 +27,14 @@ def huggingface_run(prompts: list[str], model_desc: str="7B"):
   inputs = {k:v.to(DEVICE) for k,v in inputs.items()}
   model = LlamaForCausalLM.from_pretrained(repo_id).to(DEVICE, dtype=torch.float16)
   # model.generation_config.pad_token_id = model.config.eos_token_id
-  outputs = model.generate(**inputs, max_length=30, do_sample=False, temperature=None, top_p=None)
+  outputs = model.generate(**inputs, max_length=MAX_SEQ_LEN, do_sample=False, temperature=None, top_p=None)
   output_tokens = outputs.tolist()
   texts = tokenizer.batch_decode(outputs, skip_special_tokens=True, clean_up_tokenization_spaces=False)
   return input_tokens, output_tokens, texts
 
 
 def self_run(prompts: list[str], model_desc: str="7B"):
-  max_seq_len = 30
+  max_seq_len = MAX_SEQ_LEN
   max_batch_size = 1
   generator = Llama.from_pretrained(
     max_seq_len=max_seq_len, max_batch_size=max_batch_size, model_desc=model_desc
@@ -53,8 +55,8 @@ class TestLlamaGreedy(unittest.TestCase):
     self.target = {
       "7B": {
         "inputs_target": self.inputs_target,
-        "outputs_target": [[1, 450, 6368, 310, 14215, 537, 5922, 393, 278, 6210, 310, 3578, 338, 278, 1021, 363, 599, 5366, 874, 29892, 17126, 310, 1009, 6198, 10884, 470, 310, 278, 10884, 310]],
-        "completion_target": ["The theory of relativity states that the speed of light is the same for all observers, regardless of their relative motion or of the motion of"]
+        "outputs_target": [[1, 450, 6368, 310, 14215, 537, 5922, 393, 278, 6210, 310, 3578, 338, 278, 1021, 363, 599, 5366, 874, 29892, 17126, 310, 1009, 6198, 10884, 470, 310, 278, 10884, 310, 278, 2752, 29889, 910, 2794, 393, 278, 6210, 310, 3578, 338, 4868, 297, 599, 297, 814, 616, 16608]],
+        "completion_target": ["The theory of relativity states that the speed of light is the same for all observers, regardless of their relative motion or of the motion of the source. This means that the speed of light is constant in all inertial frames"]
       },
     }
 
