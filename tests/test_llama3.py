@@ -20,6 +20,7 @@ from models.llama3.load import _tokenizer_path, huggingface_repo_id
 from models.helpers import set_device, Context
 
 DEVICE = set_device()
+MAX_SEQ_LEN = 48
 
 
 def huggingface_run(prompts: list[str], model_desc: str="3B", version: str="2"):
@@ -33,14 +34,14 @@ def huggingface_run(prompts: list[str], model_desc: str="3B", version: str="2"):
   model = LlamaForCausalLM.from_pretrained(repo_id, torch_dtype="float16").to(DEVICE)
   # Setting `pad_token_id` to `eos_token_id`:50256 for open-end generation.
   model.generation_config.pad_token_id = model.config.eos_token_id
-  outputs = model.generate(**inputs, max_length=30, do_sample=False, temperature=None, top_p=None)
+  outputs = model.generate(**inputs, max_length=MAX_SEQ_LEN, do_sample=False, temperature=None, top_p=None)
   output_tokens = outputs.tolist()
   texts = tokenizer.batch_decode(outputs, skip_special_tokens=True, clean_up_tokenization_spaces=False)
   return input_tokens, output_tokens, texts
 
 
 def self_run(prompts: list[str], model_desc: str="3B", version: str="2"):
-  max_seq_len = 30
+  max_seq_len = MAX_SEQ_LEN
   max_batch_size = 1
   generator = Llama.from_pretrained(
     max_seq_len=max_seq_len, max_batch_size=max_batch_size, model_desc=model_desc, version=version, force_dtype="float16"
@@ -63,27 +64,27 @@ class TestLlama3Greedy(unittest.TestCase):
       "2": {
         "3B": {
           "inputs_target": self.inputs_target,
-          "outputs_target": [[128000, 791, 10334, 315, 1375, 44515, 5415, 430, 279, 4732, 315, 3177, 374, 6926, 304, 682, 5905, 14418, 13, 1115, 3445, 430, 422, 499, 527, 7366, 520, 264, 6926, 4732]],
-          "completion_target": ["The theory of relativity states that the speed of light is constant in all reference frames. This means that if you are moving at a constant speed"]
+          "outputs_target": [[128000, 791, 10334, 315, 1375, 44515, 5415, 430, 279, 4732, 315, 3177, 374, 6926, 304, 682, 5905, 14418, 13, 1115, 3445, 430, 422, 499, 527, 7366, 520, 264, 6926, 4732, 11, 279, 4732, 315, 3177, 690, 2744, 387, 279, 1890, 369, 499, 13, 4452, 11, 422, 499, 527]],
+          "completion_target": ["The theory of relativity states that the speed of light is constant in all reference frames. This means that if you are moving at a constant speed, the speed of light will always be the same for you. However, if you are"]
         },
         "1B": {
           "inputs_target": self.inputs_target,
-          "outputs_target": [[128000, 791, 10334, 315, 1375, 44515, 5415, 430, 279, 4732, 315, 3177, 374, 279, 1890, 369, 682, 37643, 13, 1115, 374, 264, 1633, 3062, 7434, 304, 22027, 11, 1606, 433]],
-          "completion_target": ["The theory of relativity states that the speed of light is the same for all observers. This is a very important concept in physics, because it"]
+          "outputs_target": [[128000, 791, 10334, 315, 1375, 44515, 5415, 430, 279, 4732, 315, 3177, 374, 279, 1890, 369, 682, 37643, 13, 1115, 374, 264, 1633, 3062, 7434, 304, 22027, 11, 1606, 433, 3445, 430, 279, 4732, 315, 3177, 374, 279, 1890, 369, 682, 37643, 11, 15851, 315, 872, 3813, 304]],
+          "completion_target": ["The theory of relativity states that the speed of light is the same for all observers. This is a very important concept in physics, because it means that the speed of light is the same for all observers, regardless of their location in"]
         },
       },
       "1": {
         "8B": {
           "inputs_target": self.inputs_target,
-          "outputs_target": [[128000, 791, 10334, 315, 1375, 44515, 5415, 430, 279, 4732, 315, 3177, 374, 6926, 304, 264, 29302, 13, 1115, 3445, 430, 279, 4732, 315, 3177, 374, 279, 1890, 369, 682]],
-          "completion_target": ["The theory of relativity states that the speed of light is constant in a vacuum. This means that the speed of light is the same for all"]
+          "outputs_target": [[128000, 791, 10334, 315, 1375, 44515, 5415, 430, 279, 4732, 315, 3177, 374, 6926, 304, 264, 29302, 13, 1115, 3445, 430, 279, 4732, 315, 3177, 374, 279, 1890, 369, 682, 37643, 11, 15851, 315, 872, 8844, 11633, 477, 279, 11633, 315, 279, 2592, 315, 279, 3177, 13, 1115]],
+          "completion_target": ["The theory of relativity states that the speed of light is constant in a vacuum. This means that the speed of light is the same for all observers, regardless of their relative motion or the motion of the source of the light. This"]
         },
       },
       "0": {
         "8B": {
           "inputs_target": self.inputs_target,
-          "outputs_target": [[128000, 791, 10334, 315, 1375, 44515, 5415, 430, 279, 4732, 315, 3177, 374, 6926, 11, 323, 430, 892, 323, 3634, 527, 8844, 13, 1115, 3445, 430, 279, 4732, 315, 3177]],
-          "completion_target": ["The theory of relativity states that the speed of light is constant, and that time and space are relative. This means that the speed of light"]
+          "outputs_target": [[128000, 791, 10334, 315, 1375, 44515, 5415, 430, 279, 4732, 315, 3177, 374, 6926, 11, 323, 430, 892, 323, 3634, 527, 8844, 13, 1115, 3445, 430, 279, 4732, 315, 3177, 374, 279, 1890, 369, 682, 37643, 11, 15851, 315, 872, 4124, 315, 5905, 13, 4212, 323, 3634, 527]],
+          "completion_target": ["The theory of relativity states that the speed of light is constant, and that time and space are relative. This means that the speed of light is the same for all observers, regardless of their frame of reference. Time and space are"]
         },
       },
     }
