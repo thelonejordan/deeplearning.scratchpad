@@ -1,5 +1,4 @@
 from typing import Optional
-from collections import defaultdict
 
 import torch
 from torch import Tensor, nn
@@ -20,8 +19,8 @@ class Block(nn.Module):
     self.mlp = FeedForward(dim, hidden_dim)
 
   def forward(self, x: Tensor, start_pos: int, freqs_cis: Tensor, mask: Optional[Tensor]):
-    h = x + self.self_attn(self.input_layernorm(x), start_pos, freqs_cis, mask)  # x is residual
-    out = h + self.mlp(self.post_attention_layernorm(h))  # h is residual
+    h = x + self.self_attn(self.input_layernorm(x), start_pos, freqs_cis, mask)
+    out = h + self.mlp(self.post_attention_layernorm(h))
     return out
 
 
@@ -52,11 +51,6 @@ class Transformer(nn.Module):
     if seqlen > 1:
       mask = torch.full((seqlen, seqlen), float('-inf'), device=device)
       mask = torch.triu(mask, diagonal=1)
-      # https://github.com/pytorch/pytorch/issues/100005 (fixed in https://github.com/pytorch/pytorch/pull/128575)
-      # torch.triu is buggy when the device is mps: filled values are
-      # nan instead of 0.
-      if mask.device.type == torch.device("mps").type:
-        mask = torch.nan_to_num(mask, nan=0.0)
 
       # When performing key-value caching, we compute the attention scores
       # only for the new sequence. Thus, the matrix of scores is of size

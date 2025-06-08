@@ -25,7 +25,7 @@ class Block(nn.Module):
 
 class Transformer(nn.Module):
   def __init__(self, dim: int, n_heads: int, n_kv_heads: int, head_dim: int, hidden_dim: int, n_layers: int,
-               max_batch_size: int, max_seq_len: int, vocab_size: int, norm_eps: float, **_):
+               max_batch_size: int, max_seq_len: int, vocab_size: int, norm_eps: float, rope_theta: int, **_):
     super().__init__()
     self.max_seq_len = max_seq_len
     self.model = nn.ModuleDict(dict(
@@ -35,12 +35,12 @@ class Transformer(nn.Module):
       norm = RMSNorm(dim, eps=norm_eps)
     ))
     self.lm_head = nn.Linear(dim, vocab_size, bias=False)
-    self.freqs_cis = precompute_freqs_cis(head_dim, max_seq_len * 2)
+    self.freqs_cis = precompute_freqs_cis(head_dim, max_seq_len * 2, rope_theta)
     print("number of parameters: %.2fB" % (self.get_num_params()/1e9,))
 
   def forward(self, tokens: Tensor, start_pos: int):
     seqlen = tokens.size(1)
-    assert seqlen <= self.max_seq_len
+    assert seqlen > 0 and seqlen <= self.max_seq_len
     device = tokens.device
     h = self.model.embed_tokens(tokens)
     self.freqs_cis = self.freqs_cis.to(device)
