@@ -1,5 +1,3 @@
-from typing import List, cast
-
 import torch
 from torch import Tensor
 from torch.nn import functional as F
@@ -21,13 +19,13 @@ class GPT2(Generator):
     model, tokenizer, config = build(model_desc, safetensors=bool(SAFETENSORS))
     return GPT2(model, tokenizer, config)
 
-  def text_completion(self, prompts: List[str], max_new_tokens: int,
+  def text_completion(self, prompts: list[str], max_new_tokens: int,
                       temperature: float=1.0, top_k: int=0, top_p: float=1.0):
     return text_completion(self, prompts, max_new_tokens, temperature, top_k, top_p)
 
 
 @torch.inference_mode()
-def generate(generator: GPT2, prompt_tokens: List[List[int]], max_new_tokens: int,
+def generate(generator: GPT2, prompt_tokens: list[list[int]], max_new_tokens: int,
              temperature: float=1.0, top_k: int=0, top_p: float=1.0):
   model, tokenizer = generator.model, generator.tokenizer
   n_ctx, device = generator.config.n_ctx, generator.device
@@ -63,7 +61,7 @@ def generate(generator: GPT2, prompt_tokens: List[List[int]], max_new_tokens: in
 
 
 @torch.inference_mode()
-def text_completion(generator: GPT2, prompts: List[str], max_new_tokens: int,
+def text_completion(generator: GPT2, prompts: list[str], max_new_tokens: int,
                     temperature: float=1.0, top_k: int=0, top_p: float=1.0):
   tokenizer = generator.tokenizer
   prompt_tokens = tokenizer.encode_batch(prompts)
