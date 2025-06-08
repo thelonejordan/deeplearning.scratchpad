@@ -38,7 +38,7 @@ def generate(model: Transformer, tokenizer: Tokenizer, device: torch.device, pro
   input_mask = input_tokens != tokenizer.pad_id
   # pre-fill
   positions = torch.arange(0, min_prompt_len).to(device)
-  logits = model(input_tokens[:, :min_prompt_len], positions)
+  logits = model.forward(input_tokens[:, :min_prompt_len], positions)
   logprobs = F.log_softmax(logits, dim=-1)
   # decode
   generated = []
@@ -50,7 +50,7 @@ def generate(model: Transformer, tokenizer: Tokenizer, device: torch.device, pro
       next_token = torch.where(input_mask[:, cur_pos], input_tokens[:, cur_pos], next_token)
     all_logprobs.append(logprobs[:,-1,:].gather(1, next_token[:, None]))
     generated.append(next_token[:, None])
-    logits = model(next_token[:, None], torch.LongTensor([cur_pos]).to(next_token))
+    logits = model.forward(next_token[:, None], torch.LongTensor([cur_pos]).to(next_token))
     logprobs = F.log_softmax(logits, dim=-1)
     cur_pos += 1
 

@@ -19,8 +19,8 @@ class Block(nn.Module):
     self.ffn_norm = RMSNorm(dim, eps=norm_eps)
 
   def forward(self, x: Tensor, freqs_cis: Tensor, positions: Tensor, mask: Optional[Tensor]) -> Tensor:
-    x = x + self.attention.forward(self.attention_norm(x), freqs_cis, positions, mask)
-    x = x + self.feed_forward.forward(self.ffn_norm(x))
+    x = x + self.attention(self.attention_norm(x), freqs_cis, positions, mask)
+    x = x + self.feed_forward(self.ffn_norm(x))
     return x
 
 
@@ -37,7 +37,7 @@ class Transformer(nn.Module):
     self.freqs_cis = precompute_freqs_cis(head_dim, max_position_embeddings, rope_theta)
     print("number of parameters: %.2fB" % (self.get_num_params()/1e9,))
 
-  def forward(self, input_ids: Tensor, positions: Tensor):
+  def forward(self, input_ids: Tensor, positions: Tensor) -> Tensor:
     seqlen = input_ids.size(1)
     h: Tensor = self.tok_embeddings(input_ids)
     self.freqs_cis = self.freqs_cis.to(input_ids.device)

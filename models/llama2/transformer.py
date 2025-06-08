@@ -40,7 +40,7 @@ class Transformer(nn.Module):
     self.freqs_cis = precompute_freqs_cis(head_dim, max_seq_len * 2, rope_theta)
     print("number of parameters: %.2fB" % (self.get_num_params()/1e9,))
 
-  def forward(self, tokens: Tensor, start_pos: int):
+  def forward(self, tokens: Tensor, start_pos: int) -> Tensor:
     seqlen = tokens.size(1)
     assert seqlen > 0 and seqlen <= self.max_seq_len
     device = tokens.device

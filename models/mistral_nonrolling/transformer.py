@@ -48,7 +48,7 @@ class Transformer(nn.Module):
     self.freqs_cis = precompute_freqs_cis(head_dim, max_position_embeddings, rope_theta)
     print("number of parameters: %.2fB" % (self.get_num_params()/1e9,))
 
-  def forward(self, input_ids: Tensor, positions: Tensor):
+  def forward(self, input_ids: Tensor, positions: Tensor) -> Tensor:
     seqlen = input_ids.size(1)
     h: Tensor = self.tok_embeddings(input_ids)
     self.freqs_cis = self.freqs_cis.to(input_ids.device)

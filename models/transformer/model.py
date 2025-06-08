@@ -109,7 +109,7 @@ class Transformer(nn.Module):
     self.lm_head = nn.Linear(dim, vocab_size)
     print("number of parameters: %.2fM" % (self.get_num_params()/1e6,))
 
-  def forward(self, x: Tensor, y: Tensor):
+  def forward(self, x: Tensor, y: Tensor) -> Tensor:
     enc_seqlen, dec_seqlen = x.size(1), y.size(1)
     x = self.enc_tok_embedding(x) + self.pos_embedding(torch.arange(0, enc_seqlen))
     y = self.dec_tok_embedding(y) + self.pos_embedding(torch.arange(0, dec_seqlen))

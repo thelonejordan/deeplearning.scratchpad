@@ -43,7 +43,7 @@ def generate(generator: GPT2, prompt_tokens: list[list[int]], max_new_tokens: in
   while cur_pos < total_len:
     context = batch[:,:cur_pos] if cur_pos<=n_ctx else batch[:, -n_ctx:]
     with torch.no_grad():
-      logits: Tensor = model(context)
+      logits = model.forward(context)
     if temperature > 0:
       logits.div_(temperature)
       logits = top_k_logits(logits, top_k)

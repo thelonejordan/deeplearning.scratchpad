@@ -82,7 +82,7 @@ class Transformer(nn.Module):
     self.apply_weight_sharing()
     print("number of parameters: %.2fM" % (self.get_num_params()/1e6,))
 
-  def forward(self, idx: Tensor):
+  def forward(self, idx: Tensor) -> Tensor:
     pos = torch.arange(0, idx.size(1), dtype=torch.long, device=idx.device)
     tok_emb = self.transformer.wte(idx)  # (B, T, C)
     pos_emb = self.transformer.wpe(pos)  # (B, T, C)
