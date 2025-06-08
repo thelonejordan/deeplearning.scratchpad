@@ -1,8 +1,5 @@
 # PYTHONPATH=. python3 models/llama3/main.py
 
-# https://github.com/meta-llama/llama3/blob/main/llama/model.py (for Llama3.1)
-# https://github.com/meta-llama/llama-models/blob/main/models/llama3/model.py (for Llama3.2)
-
 from models.llama3.generate import Llama
 from models.helpers import set_device, set_seed, CHAT
 

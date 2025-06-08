@@ -7,6 +7,8 @@ from models.llama.rope import precompute_freqs_cis
 from models.llama.transformer import RMSNorm, FeedForward
 from models.llama2.attention import Attention
 
+# https://github.com/meta-llama/llama/blob/llama_v2/llama/model.py
+
 
 class Block(nn.Module):
   def __init__(self, dim: int, n_heads: int, n_kv_heads: int, head_dim: int, hidden_dim: int,
@@ -18,21 +20,21 @@ class Block(nn.Module):
     self.mlp = FeedForward(dim, hidden_dim)
 
   def forward(self, x: Tensor, start_pos: int, freqs_cis: Tensor, mask: Optional[Tensor]):
-    h = x + self.self_attn(self.input_layernorm(x), start_pos, freqs_cis, mask)
-    out = h + self.mlp(self.post_attention_layernorm(h))
-    return out
+    x = x + self.self_attn(self.input_layernorm(x), start_pos, freqs_cis, mask)
+    x = x + self.mlp(self.post_attention_layernorm(x))
+    return x
 
 
 class Transformer(nn.Module):
   def __init__(self, dim: int, n_heads: int, n_kv_heads: int, head_dim: int, hidden_dim: int, n_layers: int,
-               max_batch_size: int, max_seq_len: int, vocab_size: int, norm_eps: float, rope_theta: int, **_):
+               max_batch_size: int, max_seq_len: int, vocab_size: int, norm_eps: float, rope_theta: float, **_):
     super().__init__()
     self.max_seq_len = max_seq_len
     self.model = nn.ModuleDict(dict(
       embed_tokens = nn.Embedding(vocab_size, dim),
       layers = nn.ModuleList(
         [Block(dim, n_heads, n_kv_heads, head_dim, hidden_dim, max_batch_size, max_seq_len, norm_eps) for _ in range(n_layers)]),
-      norm = RMSNorm(dim, eps=norm_eps)
+      norm = RMSNorm(dim, eps=norm_eps),
     ))
     self.lm_head = nn.Linear(dim, vocab_size, bias=False)
     self.freqs_cis = precompute_freqs_cis(head_dim, max_seq_len * 2, rope_theta)

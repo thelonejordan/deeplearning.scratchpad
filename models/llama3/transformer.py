@@ -8,6 +8,9 @@ from models.llama.transformer import RMSNorm
 from models.llama2.transformer import FeedForward
 from models.llama3.attention import Attention
 
+# https://github.com/meta-llama/llama3/blob/main/llama/model.py (for Llama3.1)
+# https://github.com/meta-llama/llama-models/blob/main/models/llama3/model.py (for Llama3.2)
+
 
 class Block(nn.Module):
   def __init__(self, dim: int, n_heads: int, n_kv_heads: int, head_dim: int, hidden_dim: int,
@@ -26,14 +29,14 @@ class Block(nn.Module):
 
 class Transformer(nn.Module):
   def __init__(self, dim: int, n_heads: int, n_kv_heads: int, head_dim: int, hidden_dim: int, n_layers: int,
-               max_batch_size: int, max_seq_len: int, vocab_size: int, norm_eps: float, rope_theta: int, use_scaled_rope: bool, **_):
+               max_batch_size: int, max_seq_len: int, vocab_size: int, norm_eps: float, rope_theta: float, use_scaled_rope: bool, **_):
     super().__init__()
     self.max_seq_len = max_seq_len
     self.model = nn.ModuleDict(dict(
       embed_tokens = nn.Embedding(vocab_size, dim),
       layers = nn.ModuleList(
         [Block(dim, n_heads, n_kv_heads, head_dim, hidden_dim, max_batch_size, max_seq_len, norm_eps) for _ in range(n_layers)]),
-      norm = RMSNorm(dim, eps=norm_eps)
+      norm = RMSNorm(dim, eps=norm_eps),
     ))
     self.lm_head = nn.Linear(dim, vocab_size, bias=False)
     self.freqs_cis = precompute_freqs_cis(head_dim, max_seq_len * 2, rope_theta, use_scaled_rope)

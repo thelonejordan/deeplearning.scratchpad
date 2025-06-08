@@ -1,7 +1,6 @@
 # PYTHONPATH=. python3 models/llama2/main.py
 
 # https://github.com/meta-llama/llama-models
-# https://github.com/meta-llama/llama/blob/llama_v2/llama/model.py
 
 # https://arxiv.org/abs/2307.09288
 # https://huggingface.co/blog/llama2
