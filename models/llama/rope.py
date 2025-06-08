@@ -1,8 +1,8 @@
 import torch
 from torch import Tensor
 
-
 # https://github.com/meta-llama/llama/blob/57b0eb62de0636e75af471e49e2f1862d908d9d8/llama/model.py#L47
+
 
 def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0) -> Tensor:
   assert dim % 2 == 0, f"dim must be even, {dim=}"
