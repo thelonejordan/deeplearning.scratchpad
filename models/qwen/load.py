@@ -1,49 +1,47 @@
-import pathlib
-from huggingface_hub import snapshot_download
-from transformers import AutoTokenizer
-import safetensors.torch
+from typing import Optional
+from dataclasses import asdict
+
 import torch
-from models.helpers import timeit
+from transformers import AutoTokenizer
+
 from models.qwen.config import QwenConfig
-from models.qwen.transformer import Transformer
+# from models.qwen.transformer import Transformer
+from models.llama2.transformer import Transformer
+from models.llama2.load import _safetensors_load
 
-def _safetensors_load(repo_id: str):
-  ckpt_dir = snapshot_download(repo_id, allow_patterns="*.safetensors")
-  checkpoints = sorted(pathlib.Path(ckpt_dir).glob("*.safetensors"))
-  assert len(checkpoints) > 0, f"no checkpoint files found in {ckpt_dir}"
-  state_dict = {}
-  for ckpt in checkpoints:
-    state_dict.update(safetensors.torch.load_file(ckpt))
-  return state_dict
-
+# https://huggingface.co/Qwen/QwQ-32B-Preview
+# https://qwenlm.github.io/blog/qwq-32b-preview/
 
 def huggingface_repo_id(preview: bool=True):
   p = "-Preview" if preview else ""
   return f"Qwen/QwQ-32B{p}"
 
-@timeit(desc="Load time", ms=False)
-def build(max_seq_len: int, max_batch_size: int, preview: bool=True, seed: int=1):
+def build(max_seq_len: int, max_batch_size: int, preview: bool=True, force_dtype: Optional[str]=None):
   repo_id = huggingface_repo_id(preview)
   tokenizer = AutoTokenizer.from_pretrained(repo_id)
-  config = QwenConfig.build(max_seq_len, max_batch_size)
-  # TODO: assert config and tokenizer have the same vocab size
+  params = {}
+  if force_dtype is not None:
+    params['torch_dtype'] = force_dtype
+  config = QwenConfig.build(max_seq_len, max_batch_size, **params)
+  # AssertionError: config.vocab_size=152064 != len(tokenizer.get_vocab())=151665
+  # AssertionError: config.vocab_size=152064 != len(tokenizer)=151665
+  # AssertionError: config.vocab_size=152064 != tokenizer.vocab_size=151643
+  # assert config.vocab_size == tokenizer.vocab_size, f"{config.vocab_size=} != {tokenizer.vocab_size=}"
   state_dict = _safetensors_load(repo_id)
-  torch.set_default_dtype(config.torch_dtype)
-  model = Transformer(config)
+
+  default_dtype = torch.get_default_dtype()
+  torch.set_default_dtype(getattr(torch, config.torch_dtype))
+  model = Transformer(**asdict(config))
+  # TODO: strict=True
   model.load_state_dict(state_dict, assign=True, strict=False)
-  return model, tokenizer
+  torch.set_default_dtype(default_dtype)
+  return model, tokenizer, config
 
 
 if __name__ == "__main__":
-  # https://huggingface.co/Qwen/QwQ-32B-Preview
-  # https://qwenlm.github.io/blog/qwq-32b-preview/
-  # https://github.com/huggingface/transformers/blob/main/src/transformers/models/qwen2/tokenization_qwen2.py
-  # https://github.com/huggingface/transformers/blob/main/src/transformers/models/qwen2/modeling_qwen2.py
-  repo_id = "Qwen/QwQ-32B-Preview"
-  state_dict = _safetensors_load(repo_id)
-  for k, v in state_dict.items():
-    print(k, ":", v.shape)
+  # repo_id = "Qwen/QwQ-32B-Preview"
+  # state_dict = _safetensors_load(repo_id)
+  # for k, v in state_dict.items():
+  #   print(k, ":", v.shape)
 
-  ###
-
-  build(8, 8)
+  build(32, 4)
