@@ -17,14 +17,14 @@ tokenizer = AutoTokenizer.from_pretrained(model_name)
 
 prompt = "How many r in strawberry."
 messages = [
-    {"role": "system", "content": "You are a helpful and truthful assistant. You should think step-by-step."},
-    {"role": "user", "content": prompt}
+  {"role": "system", "content": "You are a helpful and truthful assistant. You should think step-by-step."},
+  {"role": "user", "content": prompt}
 ]
 # print(tokenizer.chat_template)
 text = tokenizer.apply_chat_template(
-    messages,
-    tokenize=False,
-    add_generation_prompt=True
+  messages,
+  tokenize=False,
+  add_generation_prompt=True
 )
 
 text = [text]
@@ -46,10 +46,10 @@ assert input_tokens == input_tokens_target, "input tokens do not match"
 MAX_SEQ_LEN=256
 
 generated_ids = model.generate(
-    **model_inputs,
-    max_length=MAX_SEQ_LEN,
-    # max_new_tokens=512,
-    do_sample=False,
+  **model_inputs,
+  max_length=MAX_SEQ_LEN,
+  # max_new_tokens=512,
+  do_sample=False,
 )
 
 output_tokens = generated_ids.tolist()
@@ -66,7 +66,7 @@ if echo:
   ]
 else:
   generated_ids = [
-      output_ids[len(input_ids):] for input_ids, output_ids in zip(model_inputs.input_ids, generated_ids)
+    output_ids[len(input_ids):] for input_ids, output_ids in zip(model_inputs.input_ids, generated_ids)
   ]
 
 response = tokenizer.batch_decode(generated_ids, skip_special_tokens=False)
