@@ -11,7 +11,7 @@ def instruct_example():
   device = set_device()
   set_seed(device)
 
-  generator = QwQ.from_pretrained(max_batch_size=2).to(device)
+  generator = QwQ.from_pretrained(max_seq_len=256, max_batch_size=2).to(device)
 
   # system_prompt = "Answer concisely in not more than 3 lines."
   dialogs = [
@@ -29,7 +29,12 @@ def instruct_example():
     ],
   ]
 
-  out = generator.chat_completion(dialogs, max_gen_len=256)
+  # HACK:
+  # File "/workspace/deeplearning.scratchpad/models/llama2/generate.py", line 74, in generate
+  # AttributeError: Qwen2TokenizerFast has no attribute pad_id
+  generator.tokenizer.pad_id = generator.tokenizer.encode(generator.tokenizer.special_tokens_map['pad_token'])[0]
+  generator.tokenizer.eos_id = generator.tokenizer.encode(generator.tokenizer.special_tokens_map['eos_token'])[0]
+  out = generator.chat_completion(dialogs, temperature=0.)
   assert len(out) == len(dialogs)
   print('-' * 50)
   for item in out:
@@ -120,3 +125,4 @@ def huggingface_run():
 
 if __name__ == "__main__":
   instruct_example()
+  # huggingface_run()

@@ -5,16 +5,17 @@ import torch
 from transformers import AutoTokenizer
 
 from models.qwen.config import QwQConfig
-# from models.qwen.transformer import Transformer
-from models.llama2.transformer import Transformer
+from models.qwen.transformer import Transformer
 from models.llama2.load import _safetensors_load
 
 # https://huggingface.co/Qwen/QwQ-32B-Preview
 # https://qwenlm.github.io/blog/qwq-32b-preview/
+# https://huggingface.co/Qwen/QwQ-32B
+# https://qwenlm.github.io/blog/qwq-32b/
 
 def huggingface_repo_id(preview: bool=True):
-  p = "-Preview" if preview else ""
-  return f"Qwen/QwQ-32B{p}"
+  suffix = "-Preview" if preview else ""
+  return f"Qwen/QwQ-32B{suffix}"
 
 def build(max_seq_len: int, max_batch_size: int, preview: bool=True, force_dtype: Optional[str]=None):
   repo_id = huggingface_repo_id(preview)
@@ -32,16 +33,6 @@ def build(max_seq_len: int, max_batch_size: int, preview: bool=True, force_dtype
   default_dtype = torch.get_default_dtype()
   torch.set_default_dtype(getattr(torch, config.torch_dtype))
   model = Transformer(**asdict(config))
-  # TODO: strict=True
-  model.load_state_dict(state_dict, assign=True, strict=False)
+  model.load_state_dict(state_dict, assign=True, strict=True)
   torch.set_default_dtype(default_dtype)
   return model, tokenizer, config
-
-
-if __name__ == "__main__":
-  # repo_id = "Qwen/QwQ-32B-Preview"
-  # state_dict = _safetensors_load(repo_id)
-  # for k, v in state_dict.items():
-  #   print(k, ":", v.shape)
-
-  build(32, 4)
