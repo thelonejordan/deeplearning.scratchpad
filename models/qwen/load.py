@@ -30,7 +30,7 @@ def build(max_seq_len: int, max_batch_size: int, preview: bool=True, force_dtype
   # AssertionError: config.vocab_size=152064 != tokenizer.vocab_size=151643
   # assert config.vocab_size == tokenizer.vocab_size, f"{config.vocab_size=} != {tokenizer.vocab_size=}"
   state_dict = _safetensors_load(repo_id)
-  state_dict = convert_from_huggingface(state_dict, config.dim, config.n_heads, config.n_kv_heads)
+  # state_dict = convert_from_huggingface(state_dict, config.dim, config.n_heads, config.n_kv_heads)
 
   default_dtype = torch.get_default_dtype()
   torch.set_default_dtype(getattr(torch, config.torch_dtype))
