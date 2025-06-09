@@ -6,7 +6,7 @@ from torch import Tensor, nn
 import torch.nn.functional as F
 
 from models.helpers import SDPA
-from models.llama.rope import apply_rotary_emb
+from models.llama.rope import apply_rotary_emb_alt as apply_rotary_emb
 
 
 def _attention(query: Tensor, key: Tensor, value: Tensor, mask: Optional[Tensor], scale: float):
