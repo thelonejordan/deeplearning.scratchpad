@@ -9,8 +9,8 @@ import unittest
 
 import torch
 from transformers import AutoTokenizer, LlamaForCausalLM
+from models.helpers import set_device, Context, TESTING_MINIMAL
 from models.llama.generate import generate, Llama
-from models.helpers import set_device, Context
 
 DEVICE = set_device()
 MAX_SEQ_LEN = 48
@@ -74,6 +74,7 @@ class TestLlamaGreedy(unittest.TestCase):
       inputs, outputs, completion = self_run(self.prompts, model_desc="7B")
     self._check_output(inputs, outputs, completion, **self.target["7B"])
 
+  @unittest.skipIf(bool(TESTING_MINIMAL), "testing minimal")
   def test_llama_7B_self_no_safetensors(self):
     with Context(SAFETENSORS=0):
       inputs, outputs, completion = self_run(self.prompts, model_desc="7B")

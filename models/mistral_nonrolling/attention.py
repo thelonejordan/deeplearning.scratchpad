@@ -4,7 +4,7 @@ import torch
 from torch import nn, Tensor
 import torch.nn.functional as F
 
-from models.helpers import SDPA
+from models.helpers import SDPA, set_device
 from models.llama.attention import _fused_attention
 from models.mistral_nonrolling.rope import apply_rotary_emb
 
@@ -36,8 +36,9 @@ class Attention(nn.Module):
     self.wv = nn.Linear(dim, n_kv_heads * head_dim, bias=False)
     self.wo = nn.Linear(n_heads * head_dim, dim, bias=False)
     cache_size = (max_batch_size, max_seq_len, self.n_kv_heads, self.head_dim)
-    self.cache_k = torch.zeros(cache_size, dtype=self.wq.weight.dtype)
-    self.cache_v = torch.zeros(cache_size, dtype=self.wq.weight.dtype)
+    with torch.device(set_device(quiet=True)):
+      self.cache_k = torch.zeros(cache_size, dtype=self.wq.weight.dtype)
+      self.cache_v = torch.zeros(cache_size, dtype=self.wq.weight.dtype)
 
   def forward(self, x: Tensor, freqs_cis: Tensor, positions: Tensor, mask: Optional[Tensor]) -> Tensor:
     bsz, seqlen, _ = x.shape

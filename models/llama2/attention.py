@@ -4,7 +4,7 @@ import math
 import torch
 from torch import Tensor, nn
 
-from models.helpers import SDPA
+from models.helpers import SDPA, set_device
 from models.llama.rope import apply_rotary_emb
 from models.llama.attention import _attention, _fused_attention
 
@@ -38,8 +38,9 @@ class Attention(nn.Module):
     self.v_proj = nn.Linear(dim, self.n_kv_heads * self.head_dim, bias=False)
     self.o_proj = nn.Linear(n_heads * self.head_dim, dim, bias=False)
 
-    self.cache_k = torch.zeros(max_batch_size, max_seq_len, self.n_kv_heads, self.head_dim)
-    self.cache_v = torch.zeros(max_batch_size, max_seq_len, self.n_kv_heads, self.head_dim)
+    with torch.device(set_device(quiet=True)):
+      self.cache_k = torch.zeros(max_batch_size, max_seq_len, self.n_kv_heads, self.head_dim)
+      self.cache_v = torch.zeros(max_batch_size, max_seq_len, self.n_kv_heads, self.head_dim)
 
   def forward(self, x: Tensor, start_pos: int, freqs_cis: Tensor, mask: Optional[Tensor]):
     bsz, seqlen, _ = x.shape

@@ -4,6 +4,7 @@ import torch
 from torch import Tensor, nn
 import torch.nn.functional as F
 
+from models.helpers import set_device
 from models.llama.rope import precompute_freqs_cis
 from models.llama.attention import Attention
 
@@ -61,7 +62,8 @@ class Transformer(nn.Module):
       norm = RMSNorm(dim, eps=norm_eps),
     ))
     self.lm_head = nn.Linear(dim, vocab_size, bias=False)
-    self.freqs_cis = precompute_freqs_cis(head_dim, max_seq_len * 2, rope_theta)
+    with torch.device(set_device(quiet=True)):
+      self.freqs_cis = precompute_freqs_cis(head_dim, max_seq_len * 2, rope_theta)
     print("number of parameters: %.2fB" % (self.get_num_params()/1e9,))
 
   def forward(self, tokens: Tensor, start_pos: int) -> Tensor:

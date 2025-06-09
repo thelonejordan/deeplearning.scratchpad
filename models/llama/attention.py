@@ -5,7 +5,7 @@ import torch
 from torch import Tensor, nn
 import torch.nn.functional as F
 
-from models.helpers import SDPA
+from models.helpers import SDPA, set_device
 from models.llama.rope import apply_rotary_emb_alt as apply_rotary_emb
 
 
@@ -33,8 +33,9 @@ class Attention(nn.Module):
     self.v_proj = nn.Linear(dim, dim, bias=False)
     self.o_proj = nn.Linear(dim, dim, bias=False)
 
-    self.cache_k = torch.zeros(max_batch_size, max_seq_len, n_heads, head_dim)
-    self.cache_v = torch.zeros(max_batch_size, max_seq_len, n_heads, head_dim)
+    with torch.device(set_device(quiet=True)):
+      self.cache_k = torch.zeros(max_batch_size, max_seq_len, n_heads, head_dim)
+      self.cache_v = torch.zeros(max_batch_size, max_seq_len, n_heads, head_dim)
 
   def forward(self, x: Tensor, start_pos: int, freqs_cis: Tensor, mask: Optional[Tensor]=None):
     bsz, seqlen, _ = x.size()

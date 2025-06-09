@@ -76,7 +76,8 @@ def build(max_seq_len: int, max_batch_size: int, model_desc: ModelOptions='7B', 
 
   default_dtype = torch.get_default_dtype()
   torch.set_default_dtype(getattr(torch, config.torch_dtype))
-  model = Transformer(**asdict(config))
+  with torch.device("meta"):
+    model = Transformer(**asdict(config))
   model.load_state_dict(state_dict, assign=True, strict=True)
   torch.set_default_dtype(default_dtype)
   return model, tokenizer, config
