@@ -6,8 +6,8 @@ from torch import Tensor, nn
 from torch.nn import functional as F
 
 from models.qwen.config import QwenConfig
-from models.llama.transformer import precompute_freqs_cis, apply_rotary_emb
-from models.llama2.transformer import repeat_kv
+from models.llama.rope import precompute_freqs_cis, apply_rotary_emb
+from models.llama2.attention import repeat_kv
 from models.llama.transformer import RMSNorm, FeedForward
 
 

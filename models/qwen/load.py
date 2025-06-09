@@ -17,9 +17,13 @@ def _safetensors_load(repo_id: str):
   return state_dict
 
 
+def huggingface_repo_id(preview: bool=True):
+  p = "-Preview" if preview else ""
+  return f"Qwen/QwQ-32B{p}"
+
 @timeit(desc="Load time", ms=False)
-def build(max_seq_len: int, max_batch_size: int, seed: int=1):
-  repo_id = "Qwen/QwQ-32B-Preview"
+def build(max_seq_len: int, max_batch_size: int, preview: bool=True, seed: int=1):
+  repo_id = huggingface_repo_id(preview)
   tokenizer = AutoTokenizer.from_pretrained(repo_id)
   config = QwenConfig.build(max_seq_len, max_batch_size)
   # TODO: assert config and tokenizer have the same vocab size
@@ -39,7 +43,7 @@ if __name__ == "__main__":
   state_dict = _safetensors_load(repo_id)
   for k, v in state_dict.items():
     print(k, ":", v.shape)
-  
+
   ###
 
   build(8, 8)
