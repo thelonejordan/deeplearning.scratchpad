@@ -33,7 +33,7 @@ def chat_completion(generator: QwQ, dialogs: list[Dialog], temperature: float=0.
     generator, prompt_tokens=prompt_tokens, max_gen_len=max_gen_len,
     temperature=temperature, top_p=top_p, logprobs=logprobs,
   )
-  generation_texts = generator.tokenizer.batch_decode(generation_tokens, skip_special_tokens=False)
+  generation_texts = generator.tokenizer.batch_decode(generation_tokens, skip_special_tokens=True, clean_up_tokenization_spaces=True)
   if logprobs:
     return [
       {
