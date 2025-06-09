@@ -4,7 +4,7 @@ import os
 import unittest
 
 from transformers import AutoTokenizer, GPT2LMHeadModel
-from models.helpers import set_device, Context
+from models.helpers import set_device, Context, TESTING_MINIMAL
 from models.gpt2.generate import GPT2, generate
 
 DEVICE = set_device()
@@ -21,7 +21,7 @@ def huggingface_run(prompts: list[str], model_desc: str="gpt2"):
   model.generation_config.pad_token_id = model.config.eos_token_id
   outputs = model.generate(**inputs, max_length=30, do_sample=False, temperature=None, top_p=None)
   output_tokens = outputs.tolist()
-  texts = tokenizer.batch_decode(outputs, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+  texts = tokenizer.batch_decode(outputs, skip_special_tokens=True, clean_up_tokenization_spaces=True)
   return input_tokens, output_tokens, texts
 
 def self_run(prompts: list[str], model_desc: str="gpt2"):
@@ -36,7 +36,7 @@ def self_run(prompts: list[str], model_desc: str="gpt2"):
   return inputs, outputs, texts
 
 
-class TestLlama3dot2Greedy(unittest.TestCase):
+class TestGPT2Greedy(unittest.TestCase):
   def setUp(self):
     self.prompts = ["The theory of relativity states that"]
     self.inputs_target = [[464, 4583, 286, 44449, 2585, 326]]
@@ -68,6 +68,7 @@ class TestLlama3dot2Greedy(unittest.TestCase):
       inputs, outputs, completion = self_run(self.prompts, model_desc="gpt2")
     self._check_output(inputs, outputs, completion, **self.target["gpt2"])
 
+  @unittest.skipIf(bool(TESTING_MINIMAL), "testing minimal")
   def test_gpt2_self_no_safetensors(self):
     with Context(SAFETENSORS=0):
       inputs, outputs, completion = self_run(self.prompts, model_desc="gpt2")
@@ -82,6 +83,7 @@ class TestLlama3dot2Greedy(unittest.TestCase):
       inputs, outputs, completion = self_run(self.prompts, model_desc="gpt2-medium")
     self._check_output(inputs, outputs, completion, **self.target["gpt2-medium"])
 
+  @unittest.skipIf(bool(TESTING_MINIMAL), "testing minimal")
   def test_gpt2_medium_self_no_safetensors(self):
     with Context(SAFETENSORS=0):
       inputs, outputs, completion = self_run(self.prompts, model_desc="gpt2-medium")

@@ -48,7 +48,8 @@ def build(model_desc: ModelOptions='gpt2', safetensors: bool=True):
   # According to this comment, dtype of a model in PyTorch is always float32, regardless of the dtype of the checkpoint you saved.
   default_dtype = torch.get_default_dtype()
   torch.set_default_dtype(getattr(torch, config.torch_dtype))
-  model = Transformer(**asdict(config))
+  with torch.device("meta"):
+    model = Transformer(**asdict(config))
   model.transformer.load_state_dict(state_dict, assign=True, strict=True)
   torch.set_default_dtype(default_dtype)
   return model.apply_weight_sharing(), tokenizer, config

@@ -4,13 +4,23 @@ import math
 import torch
 from torch import Tensor, nn
 
-from models.helpers import SDPA
+from models.helpers import SDPA, set_device
 from models.llama.rope import apply_rotary_emb
 from models.llama.attention import _attention, _fused_attention
 
+def repeat_kv(x: Tensor, n_rep: int) -> Tensor:
+  """torch.repeat_interleave(x, dim=2, repeats=n_rep)"""
+  bs, slen, n_kv_heads, head_dim = x.shape
+  if n_rep == 1:
+    return x
+  return (
+    x[:, :, :, None, :]
+    .expand(bs, slen, n_kv_heads, n_rep, head_dim)
+    .reshape(bs, slen, n_kv_heads * n_rep, head_dim)
+  )
 
 # n_rep > 1 aka n_kv_heads != n_heads implies MQA [arxiv/2307.09288, A.2.1]
-def repeat_kv(x: Tensor, n_rep: int) -> Tensor:
+def repeat_kv_alt(x: Tensor, n_rep: int) -> Tensor:
   if n_rep == 1: return x
   bs, seqlen, n_kv_heads, head_dim = x.shape
   x = x.unsqueeze(-2).expand(-1, -1, -1, n_rep, -1)
@@ -28,8 +38,9 @@ class Attention(nn.Module):
     self.v_proj = nn.Linear(dim, self.n_kv_heads * self.head_dim, bias=False)
     self.o_proj = nn.Linear(n_heads * self.head_dim, dim, bias=False)
 
-    self.cache_k = torch.zeros(max_batch_size, max_seq_len, self.n_kv_heads, self.head_dim)
-    self.cache_v = torch.zeros(max_batch_size, max_seq_len, self.n_kv_heads, self.head_dim)
+    with torch.device(set_device(quiet=True)):
+      self.cache_k = torch.zeros(max_batch_size, max_seq_len, self.n_kv_heads, self.head_dim)
+      self.cache_v = torch.zeros(max_batch_size, max_seq_len, self.n_kv_heads, self.head_dim)
 
   def forward(self, x: Tensor, start_pos: int, freqs_cis: Tensor, mask: Optional[Tensor]):
     bsz, seqlen, _ = x.shape
@@ -47,9 +58,14 @@ class Attention(nn.Module):
 
     keys = self.cache_k[:bsz, : start_pos + seqlen]
     values = self.cache_v[:bsz, : start_pos + seqlen]
-    keys = repeat_kv(keys, self.n_rep)  # (bs, seqlen, n_local_heads, head_dim)
-    values = repeat_kv(values, self.n_rep)  # (bs, seqlen, n_local_heads, head_dim)
-    xq, keys, values = xq.transpose(1, 2), keys.transpose(1, 2), values.transpose(1, 2)
+
+    # repeat k/v heads if n_kv_heads < n_heads
+    keys = repeat_kv(keys, self.n_rep)  # (bs, cache_len + seqlen, n_local_heads, head_dim)
+    values = repeat_kv(values, self.n_rep)  # (bs, cache_len + seqlen, n_local_heads, head_dim)
+
+    xq = xq.transpose(1, 2)  # (bs, n_local_heads, seqlen, head_dim)
+    keys = keys.transpose(1, 2)  # (bs, n_local_heads, cache_len + seqlen, head_dim)
+    values = values.transpose(1, 2)  # (bs, n_local_heads, cache_len + seqlen, head_dim)
     output = self._attn_fn(xq, keys, values, mask, 1.0/math.sqrt(self.head_dim))
 
     output = output.transpose(1, 2).contiguous().view(bsz, seqlen, -1)

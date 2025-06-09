@@ -14,10 +14,10 @@ import os
 import unittest
 
 from transformers import AutoTokenizer, LlamaForCausalLM
+from models.helpers import set_device, Context, TESTING_MINIMAL
 from models.llama3.generate import generate, Llama
 from models.llama3.tokenizer import Tokenizer, ChatFormat
 from models.llama3.load import _tokenizer_path, huggingface_repo_id
-from models.helpers import set_device, Context
 
 DEVICE = set_device()
 MAX_SEQ_LEN = 48
@@ -36,7 +36,7 @@ def huggingface_run(prompts: list[str], model_desc: str="3B", version: str="2"):
   model.generation_config.pad_token_id = model.config.eos_token_id
   outputs = model.generate(**inputs, max_length=MAX_SEQ_LEN, do_sample=False, temperature=None, top_p=None)
   output_tokens = outputs.tolist()
-  texts = tokenizer.batch_decode(outputs, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+  texts = tokenizer.batch_decode(outputs, skip_special_tokens=True, clean_up_tokenization_spaces=True)
   return input_tokens, output_tokens, texts
 
 
@@ -103,6 +103,7 @@ class TestLlama3Greedy(unittest.TestCase):
       inputs, outputs, completion = self_run(self.prompts, model_desc="3B", version="2")
     self._check_output(inputs, outputs, completion, **self.target["2"]["3B"])
 
+  @unittest.skipIf(bool(TESTING_MINIMAL), "testing minimal")
   def test_llama_3_dot_2_3B_self_no_safetensors(self):
     with Context(SAFETENSORS=0):
       inputs, outputs, completion = self_run(self.prompts, model_desc="3B", version="2")
@@ -117,6 +118,7 @@ class TestLlama3Greedy(unittest.TestCase):
       inputs, outputs, completion = self_run(self.prompts, model_desc="1B", version="2")
     self._check_output(inputs, outputs, completion, **self.target["2"]["1B"])
 
+  @unittest.skipIf(bool(TESTING_MINIMAL), "testing minimal")
   def test_llama_3_dot_2_1B_self_no_safetensors(self):
     with Context(SAFETENSORS=0):
       inputs, outputs, completion = self_run(self.prompts, model_desc="1B", version="2")
@@ -131,6 +133,7 @@ class TestLlama3Greedy(unittest.TestCase):
       inputs, outputs, completion = self_run(self.prompts, model_desc="8B", version="1")
     self._check_output(inputs, outputs, completion, **self.target["1"]["8B"])
 
+  @unittest.skipIf(bool(TESTING_MINIMAL), "testing minimal")
   def test_llama_3_dot_1_8B_self_no_safetensors(self):
     with Context(SAFETENSORS=0):
       inputs, outputs, completion = self_run(self.prompts, model_desc="8B", version="1")
@@ -145,6 +148,7 @@ class TestLlama3Greedy(unittest.TestCase):
       inputs, outputs, completion = self_run(self.prompts, model_desc="8B", version="0")
     self._check_output(inputs, outputs, completion, **self.target["0"]["8B"])
 
+  @unittest.skipIf(bool(TESTING_MINIMAL), "testing minimal")
   def test_llama_3_8B_self_no_safetensors(self):
     with Context(SAFETENSORS=0):
       inputs, outputs, completion = self_run(self.prompts, model_desc="8B", version="0")
@@ -195,7 +199,7 @@ class TestLlama3ChatFormat(unittest.TestCase):
   def test_llama3_dot_1_chat_format(self):
     self.helper_test_llama3_chat_format(model_desc="8B", version="1")
 
-  def test_llama3_dot_1_chat_format(self):
+  def test_llama3_dot_0_chat_format(self):
     self.helper_test_llama3_chat_format(model_desc="8B", version="0")
 
 

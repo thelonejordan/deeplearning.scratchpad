@@ -3,7 +3,7 @@ from typing import Optional, Callable
 import torch
 from torch import Tensor, nn
 
-from models.helpers import SDPA
+from models.helpers import SDPA, set_device
 from models.llama.attention import _attention, _fused_attention
 from models.mistral_nonrolling.rope import apply_rotary_emb
 from models.mistral_nonrolling.attention import repeat_kv
@@ -24,8 +24,9 @@ class Attention(nn.Module):
     self.wv = nn.Linear(dim, n_kv_heads * head_dim, bias=False)
     self.wo = nn.Linear(n_heads * head_dim, dim, bias=False)
     cache_size = (max_batch_size, sliding_window, self.n_kv_heads, head_dim)
-    self.cache_k = torch.empty(cache_size, dtype=self.wq.weight.dtype)
-    self.cache_v = torch.empty(cache_size, dtype=self.wq.weight.dtype)
+    with torch.device(set_device(quiet=True)):
+      self.cache_k = torch.empty(cache_size, dtype=self.wq.weight.dtype)
+      self.cache_v = torch.empty(cache_size, dtype=self.wq.weight.dtype)
 
   def forward(self, x: Tensor, freqs_cis: Tensor, positions: Tensor, mask: Optional[Tensor]) -> Tensor:
     bsz, seqlen, _ = x.shape

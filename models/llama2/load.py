@@ -1,9 +1,11 @@
 from typing import Literal, Optional, get_args
 from pathlib import Path
 from dataclasses import asdict
+
 from huggingface_hub import snapshot_download
 import safetensors.torch
 import torch
+
 from models.llama.tokenizer import Tokenizer
 from models.llama2.transformer import Transformer
 from models.llama2.config import LlamaConfig, CONFIGS
@@ -67,7 +69,8 @@ def build(max_seq_len: int, max_batch_size: int, model_desc: ModelOptions='7B', 
 
   default_dtype = torch.get_default_dtype()
   torch.set_default_dtype(getattr(torch, config.torch_dtype))
-  model = Transformer(**asdict(config))
+  with torch.device("meta"):
+    model = Transformer(**asdict(config))
   model.load_state_dict(state_dict, assign=True, strict=True)
   torch.set_default_dtype(default_dtype)
   return model, tokenizer, config

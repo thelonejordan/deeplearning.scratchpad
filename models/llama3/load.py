@@ -2,13 +2,14 @@ from typing import Literal, Optional, get_args
 from pathlib import Path
 from dataclasses import asdict
 
+from huggingface_hub import snapshot_download
+import safetensors.torch
+import torch
+
 from models.llama3.tokenizer import Tokenizer
 from models.llama3.transformer import Transformer
 from models.llama3.config import LlamaConfig, CONFIGS
 from models.llama.load import convert_from_huggingface
-from huggingface_hub import snapshot_download
-import safetensors.torch
-import torch
 
 def _safetensors_load(repo_id: str, keymap: dict[str, str] = {}):
   ckpt_dir = snapshot_download(repo_id, allow_patterns="*.safetensors")
@@ -26,7 +27,7 @@ def _torch_load(repo_id: str, keymap: dict[str, str] = {}):
   assert len(checkpoints) > 0, f"no checkpoint files found in {ckpt_dir}"
   state_dict = {}
   for ckpt in checkpoints:
-    state_dict.update(torch.load(str(ckpt), map_location='cpu', weights_only=True, mmap=True))
+    state_dict.update(torch.load(str(ckpt), map_location="cpu", weights_only=True, mmap=True))
   state_dict = {keymap.get(k, k):v for k, v in state_dict.items() if "freq" not in k}
   return state_dict
 
@@ -78,7 +79,8 @@ def build(max_seq_len: int, max_batch_size: int, seed: int=1,
   tie_word_embeddings = version == '2'  # TODO: add this as a config parameter?
   default_dtype = torch.get_default_dtype()
   torch.set_default_dtype(getattr(torch, config.torch_dtype))
-  model = Transformer(**asdict(config))
+  with torch.device("meta"):
+    model = Transformer(**asdict(config))
   _model = model
   if tie_word_embeddings:
     _model = model.model

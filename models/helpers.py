@@ -23,15 +23,20 @@ def timeit(desc: Optional[str]=None, ms: bool=True):
     return __wrapper
   return _decorator
 
-def set_device(device: Optional[str]=None) -> torch.device:
-  if getenv("CUDA") == 1: device = 'cuda'
+def set_device(device: Optional[str]=None, quiet: bool=False) -> torch.device:
+  if device is not None: pass
+  elif getenv("CUDA") == 1: device = 'cuda'
   elif getenv("MPS") == 1: device = 'mps'
   elif getenv("CPU") == 1: device = 'cpu'
-  elif device is None:
+  if device is None:
     if torch.cuda.is_available(): device = 'cuda'
     elif torch.backends.mps.is_available(): device = 'mps'
     else: device = 'cpu'
-  print(f'Using device: {device}')
+  if not quiet:
+    print(f'Using device: {device}')
+  os.environ["CUDA"] = str(int(device=="cuda"))
+  os.environ["MPS"] = str(int(device=="mps"))
+  os.environ["CPU"] = str(int(device=="cpu"))
   return torch.device(device)
 
 def set_seed(device: torch.device, seed: Optional[int]=None):
@@ -79,3 +84,4 @@ class ContextVar:
 SAFETENSORS = ContextVar("SAFETENSORS", 1)
 SDPA = ContextVar("SDPA", 1)
 CHAT = ContextVar("CHAT", 0)
+TESTING_MINIMAL = ContextVar("TESTING_MINIMAL", 0)

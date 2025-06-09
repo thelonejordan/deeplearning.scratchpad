@@ -5,15 +5,16 @@ import torch
 from torch import Tensor, nn
 import torch.nn.functional as F
 
-from models.helpers import SDPA
+from models.helpers import SDPA, set_device
 from models.llama.rope import apply_rotary_emb_alt as apply_rotary_emb
 
 
 def _attention(query: Tensor, key: Tensor, value: Tensor, mask: Optional[Tensor], scale: float):
-  scores = (query @ key.transpose(2, 3)) * scale
-  if mask is not None: scores = scores + mask
+  scores = torch.matmul(query, key.transpose(2, 3)) * scale
+  if mask is not None:
+    scores = scores + mask  # (bs, n_local_heads, seqlen, cache_len + seqlen)
   scores = F.softmax(scores.float(), dim=-1).type_as(query)
-  output = scores @ value
+  output = torch.matmul(scores, value)  # (bs, n_local_heads, seqlen, head_dim)
   return output
 
 def _fused_attention(query: Tensor, key: Tensor, value: Tensor, mask: Optional[Tensor], scale: float):
@@ -32,8 +33,9 @@ class Attention(nn.Module):
     self.v_proj = nn.Linear(dim, dim, bias=False)
     self.o_proj = nn.Linear(dim, dim, bias=False)
 
-    self.cache_k = torch.zeros(max_batch_size, max_seq_len, n_heads, head_dim)
-    self.cache_v = torch.zeros(max_batch_size, max_seq_len, n_heads, head_dim)
+    with torch.device(set_device(quiet=True)):
+      self.cache_k = torch.zeros(max_batch_size, max_seq_len, n_heads, head_dim)
+      self.cache_v = torch.zeros(max_batch_size, max_seq_len, n_heads, head_dim)
 
   def forward(self, x: Tensor, start_pos: int, freqs_cis: Tensor, mask: Optional[Tensor]=None):
     bsz, seqlen, _ = x.size()

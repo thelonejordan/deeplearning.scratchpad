@@ -3,6 +3,7 @@ from typing import Optional
 import torch
 from torch import Tensor, nn
 
+from models.helpers import set_device
 from models.llama.transformer import RMSNorm
 from models.mistral_nonrolling.rope import precompute_freqs_cis
 from models.mistral_nonrolling.transformer import FeedForward
@@ -34,7 +35,8 @@ class Transformer(nn.Module):
       [Block(dim, head_dim, hidden_dim, n_heads, n_kv_heads, sliding_window, max_batch_size, norm_eps) for _ in range(n_layers)])
     self.norm = RMSNorm(dim, eps=norm_eps)
     self.output = nn.Linear(dim, vocab_size, bias=False)
-    self.freqs_cis = precompute_freqs_cis(head_dim, max_position_embeddings, rope_theta)
+    with torch.device(set_device(quiet=True)):
+      self.freqs_cis = precompute_freqs_cis(head_dim, max_position_embeddings, rope_theta)
     print("number of parameters: %.2fB" % (self.get_num_params()/1e9,))
 
   def forward(self, input_ids: Tensor, positions: Tensor) -> Tensor:

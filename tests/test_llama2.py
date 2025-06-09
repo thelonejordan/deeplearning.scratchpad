@@ -20,12 +20,12 @@
 import unittest
 
 from transformers import AutoTokenizer, LlamaForCausalLM
+from models.helpers import set_device, Context, TESTING_MINIMAL
 from models.llama2.generate import generate, Llama
 from models.llama2.tokenizer import encode_dialog_prompt, preprocess_dialog
 from models.llama2.load import huggingface_repo_id
 from models.llama.tokenizer import Tokenizer
 from models.llama.load import _tokenizer_path
-from models.helpers import set_device, Context
 
 DEVICE = set_device()
 MAX_SEQ_LEN = 48
@@ -43,7 +43,7 @@ def huggingface_run(prompts: list[str], model_desc: str="7B"):
   # model.generation_config.pad_token_id = model.config.eos_token_id
   outputs = model.generate(**inputs, max_length=MAX_SEQ_LEN, do_sample=False, temperature=None, top_p=None)
   output_tokens = outputs.tolist()
-  texts = tokenizer.batch_decode(outputs, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+  texts = tokenizer.batch_decode(outputs, skip_special_tokens=True, clean_up_tokenization_spaces=True)
   return input_tokens, output_tokens, texts
 
 
@@ -88,6 +88,7 @@ class TestLlama2Greedy(unittest.TestCase):
       inputs, outputs, completion = self_run(self.prompts, model_desc="7B")
     self._check_output(inputs, outputs, completion, **self.target["7B"])
 
+  @unittest.skipIf(bool(TESTING_MINIMAL), "testing minimal")
   def test_llama_2_7B_self_no_safetensors(self):
     with Context(SAFETENSORS=0):
       inputs, outputs, completion = self_run(self.prompts, model_desc="7B")
