@@ -4,7 +4,7 @@ from dataclasses import asdict
 import torch
 from transformers import AutoTokenizer
 
-from models.qwen.config import QwenConfig
+from models.qwen.config import QwQConfig
 # from models.qwen.transformer import Transformer
 from models.llama2.transformer import Transformer
 from models.llama2.load import _safetensors_load
@@ -22,7 +22,7 @@ def build(max_seq_len: int, max_batch_size: int, preview: bool=True, force_dtype
   params = {}
   if force_dtype is not None:
     params['torch_dtype'] = force_dtype
-  config = QwenConfig.build(max_seq_len, max_batch_size, **params)
+  config = QwQConfig.build(max_seq_len, max_batch_size, **params)
   # AssertionError: config.vocab_size=152064 != len(tokenizer.get_vocab())=151665
   # AssertionError: config.vocab_size=152064 != len(tokenizer)=151665
   # AssertionError: config.vocab_size=152064 != tokenizer.vocab_size=151643

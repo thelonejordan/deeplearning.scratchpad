@@ -3,7 +3,7 @@ from typing import Optional
 from dataclasses import dataclass
 
 @dataclass
-class QwenConfig:
+class QwQConfig:
   # these are constant across all models
   dim: int = 5120
   hidden_dim: int = 27648
@@ -37,5 +37,5 @@ class QwenConfig:
     if self.n_kv_heads is None: self.n_kv_heads = self.n_heads
 
   @staticmethod
-  def build(max_seq_len: int=2048, max_batch_size: int=32, **params) -> QwenConfig:
-    return QwenConfig(max_seq_len=max_seq_len, max_batch_size=max_batch_size, **params)
+  def build(max_seq_len: int=2048, max_batch_size: int=32, **params) -> QwQConfig:
+    return QwQConfig(max_seq_len=max_seq_len, max_batch_size=max_batch_size, **params)

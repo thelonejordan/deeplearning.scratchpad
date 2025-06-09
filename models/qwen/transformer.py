@@ -5,14 +5,14 @@ import torch
 from torch import Tensor, nn
 from torch.nn import functional as F
 
-from models.qwen.config import QwenConfig
+from models.qwen.config import QwQConfig
 from models.llama.rope import precompute_freqs_cis, apply_rotary_emb
 from models.llama2.attention import Attention, repeat_kv
 from models.llama.transformer import RMSNorm, FeedForward
 
 
 class Attention(nn.Module):
-  def __init__(self, config: QwenConfig):
+  def __init__(self, config: QwQConfig):
     super().__init__()
     self.n_heads, self.n_kv_heads, self.head_dim = config.n_heads, config.n_kv_heads, config.head_dim
     self.n_rep  = config.n_heads // config.n_kv_heads
@@ -63,7 +63,7 @@ class Attention(nn.Module):
 
 
 class TransformerBlock(nn.Module):
-  def __init__(self, config: QwenConfig):
+  def __init__(self, config: QwQConfig):
     super().__init__()
     self.input_layernorm = RMSNorm(config.dim, eps=config.norm_eps)
     self.self_attn = Attention(config)
@@ -76,7 +76,7 @@ class TransformerBlock(nn.Module):
     return out
 
 class Transformer(nn.Module):
-  def __init__(self, config: QwenConfig):
+  def __init__(self, config: QwQConfig):
     super().__init__()
     self.config = config
     self.model = nn.ModuleDict(dict(

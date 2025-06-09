@@ -2,12 +2,12 @@ from __future__ import annotations
 from typing import Optional
 from models.llama2.transformer import Transformer
 from models.llama2.generate import generate, Dialog, ChatPrediction
-from models.qwen.config import QwenConfig
+from models.qwen.config import QwQConfig
 from models.helpers import timeit, Generator
 from models.qwen.load import build
 
 class QwQ(Generator):
-  def __init__(self, model: Transformer, tokenizer, config: QwenConfig):
+  def __init__(self, model: Transformer, tokenizer, config: QwQConfig):
     self.model, self.tokenizer, self.config = model, tokenizer, config
 
   @staticmethod
@@ -57,8 +57,6 @@ def chat_completion(generator: QwQ, dialogs: list[Dialog], temperature: float=0.
   unsafe_requests = []
   dialogs = generator.tokenizer.apply_chat_template(dialogs, tokenize=False, add_generation_prompt=True)
   prompt_tokens = generator.tokenizer(dialogs)
-  print(prompt_tokens)
-  exit(0)
   generation_tokens, generation_logprobs = generate(
     generator, prompt_tokens=prompt_tokens, max_gen_len=max_gen_len,
     temperature=temperature, top_p=top_p, logprobs=logprobs,
@@ -68,7 +66,7 @@ def chat_completion(generator: QwQ, dialogs: list[Dialog], temperature: float=0.
       {
         "generation": {
           "role": "assistant",
-          "content": generator.tokenizer.decode(t) if not unsafe else UNSAFE_ERROR,
+          "content": generator.tokenizer.decode(t),
         },
         "tokens": [generator.tokenizer.decode(x) for x in t],
         "logprobs": logprobs_i,
@@ -81,7 +79,7 @@ def chat_completion(generator: QwQ, dialogs: list[Dialog], temperature: float=0.
     {
       "generation": {
         "role": "assistant",
-        "content": generator.tokenizer.decode(t) if not unsafe else UNSAFE_ERROR,
+        "content": generator.tokenizer.decode(t),
       }
     }
     for t, unsafe in zip(generation_tokens, unsafe_requests)
