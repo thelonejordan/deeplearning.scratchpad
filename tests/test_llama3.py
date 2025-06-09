@@ -36,7 +36,7 @@ def huggingface_run(prompts: list[str], model_desc: str="3B", version: str="2"):
   model.generation_config.pad_token_id = model.config.eos_token_id
   outputs = model.generate(**inputs, max_length=MAX_SEQ_LEN, do_sample=False, temperature=None, top_p=None)
   output_tokens = outputs.tolist()
-  texts = tokenizer.batch_decode(outputs, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+  texts = tokenizer.batch_decode(outputs, skip_special_tokens=True, clean_up_tokenization_spaces=True)
   return input_tokens, output_tokens, texts
 
 

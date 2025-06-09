@@ -6,7 +6,7 @@ from torch import Tensor, nn
 from models.llama3.rope import precompute_freqs_cis
 from models.llama.transformer import RMSNorm
 from models.llama2.transformer import FeedForward
-from models.llama3.attention import Attention
+from models.llama2.attention import Attention
 
 # https://github.com/meta-llama/llama3/blob/main/llama/model.py (for Llama3.1)
 # https://github.com/meta-llama/llama-models/blob/main/models/llama3/model.py (for Llama3.2)

@@ -10,10 +10,11 @@ from models.llama.rope import apply_rotary_emb_alt as apply_rotary_emb
 
 
 def _attention(query: Tensor, key: Tensor, value: Tensor, mask: Optional[Tensor], scale: float):
-  scores = (query @ key.transpose(2, 3)) * scale
-  if mask is not None: scores = scores + mask
+  scores = torch.matmul(query, key.transpose(2, 3)) * scale
+  if mask is not None:
+    scores = scores + mask  # (bs, n_local_heads, seqlen, cache_len + seqlen)
   scores = F.softmax(scores.float(), dim=-1).type_as(query)
-  output = scores @ value
+  output = torch.matmul(scores, value)  # (bs, n_local_heads, seqlen, head_dim)
   return output
 
 def _fused_attention(query: Tensor, key: Tensor, value: Tensor, mask: Optional[Tensor], scale: float):
