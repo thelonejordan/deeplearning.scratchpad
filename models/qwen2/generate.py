@@ -3,7 +3,7 @@ from typing import Optional
 
 from models.helpers import timeit, Generator
 from models.llama2.transformer import Transformer
-from models.llama2.generate import generate, Dialog, ChatPrediction
+from models.llama2.generate import generate, CompletionPrediction, ChatPrediction, Dialog
 from models.qwen2.config import QwenConfig
 from models.qwen2.load import build, ModelOptions, ModelSizes
 
@@ -21,9 +21,60 @@ class Qwen(Generator):
     )
     return Qwen(model, tokenizer, config)
 
+  def text_completion(self, prompts: list[str], temperature: float=0.6, top_p: float=0.9,
+                      max_gen_len: Optional[int]=None, logprobs: bool = False, echo: bool = False):
+    return text_completion(self, prompts, temperature, top_p, max_gen_len, logprobs, echo)
+
   def chat_completion(self, prompts: list[str], temperature: float=0.6, top_p: float=0.9,
                       max_gen_len: Optional[int]=None, logprobs: bool = False):
     return chat_completion(self, prompts, temperature, top_p, max_gen_len, logprobs)
+
+
+def text_completion(generator: Qwen, prompts: list[str], temperature: float=0.6, top_p: float=0.9,
+                    max_gen_len: Optional[int]=None, logprobs: bool=False, echo: bool=False) -> list[CompletionPrediction]:
+  """
+  Perform text completion for a list of prompts using the language generation model.
+
+  Args:
+    prompts (list[str]): List of text prompts for completion.
+    temperature (float, optional): Temperature value for controlling randomness in sampling. Defaults to 0.6.
+    top_p (float, optional): Top-p probability threshold for nucleus sampling. Defaults to 0.9.
+    max_gen_len (Optional[int], optional): Maximum length of the generated completion sequence.
+      If not provided, it's set to the model's maximum sequence length minus 1.
+    logprobs (bool, optional): Flag indicating whether to compute token log probabilities. Defaults to False.
+    echo (bool, optional): Flag indicating whether to include prompt tokens in the generated output. Defaults to False.
+
+  Returns:
+    list[CompletionPrediction]: List of completion predictions, each containing the generated text completion.
+
+  Note:
+    This method generates text completions for the provided prompts, employing nucleus sampling to introduce controlled randomness.
+    If logprobs is True, token log probabilities are computed for each generated token.
+  """
+  tokenizer, max_seq_len = generator.tokenizer, generator.config.max_seq_len
+  if max_gen_len is None:
+    max_gen_len = max_seq_len - 1
+  prompt_tokens = tokenizer(prompts)["input_ids"]
+  generation_tokens, generation_logprobs = generate(
+    generator=generator,
+    prompt_tokens=prompt_tokens,
+    max_gen_len=max_gen_len,
+    temperature=temperature,
+    top_p=top_p,
+    logprobs=logprobs,
+    echo=echo,
+  )
+  generation_texts = generator.tokenizer.batch_decode(generation_tokens, skip_special_tokens=True, clean_up_tokenization_spaces=True)
+  if logprobs:
+    return [
+      {
+        "generation": g,
+        "tokens": [tokenizer.decode([x]) for x in t],
+        "logprobs": logprobs_i,
+      }
+      for g, t, logprobs_i in zip(generation_texts, generation_tokens, generation_logprobs)  # type: ignore
+    ]
+  return [{"generation": g} for g in generation_texts]
 
 
 def chat_completion(generator: Qwen, dialogs: list[Dialog], temperature: float=0.6, top_p: float=0.9,
