@@ -18,7 +18,8 @@ def _attention(query: Tensor, key: Tensor, value: Tensor, mask: Optional[Tensor]
   return output
 
 def _fused_attention(query: Tensor, key: Tensor, value: Tensor, mask: Optional[Tensor], scale: float):
-  output = F.scaled_dot_product_attention(query, key, value, mask, scale=scale)
+  # https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html
+  output = F.scaled_dot_product_attention(query, key, value, attn_mask=mask, scale=scale)
   return output
 
 
