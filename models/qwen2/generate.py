@@ -4,26 +4,29 @@ from typing import Optional
 from models.helpers import timeit, Generator
 from models.llama2.transformer import Transformer
 from models.llama2.generate import generate, Dialog, ChatPrediction
-from models.qwq.config import QwQConfig
-from models.qwq.load import build
+from models.qwen2.config import QwenConfig
+from models.qwen2.load import build, ModelOptions, ModelSizes
 
 
-class QwQ(Generator):
-  def __init__(self, model: Transformer, tokenizer, config: QwQConfig):
+class Qwen(Generator):
+  def __init__(self, model: Transformer, tokenizer, config: QwenConfig):
     self.model, self.tokenizer, self.config = model, tokenizer, config
 
   @staticmethod
   @timeit(desc="Load time", ms=False)
-  def from_pretrained(max_seq_len: int=512, max_batch_size: int=8, preview: bool=True, force_dtype: Optional[str]=None) -> QwQ:
-    model, tokenizer, config = build(max_seq_len, max_batch_size, preview, force_dtype=force_dtype)
-    return QwQ(model, tokenizer, config)
+  def from_pretrained(max_seq_len: int=512, max_batch_size: int=8, model_desc: ModelOptions="qwq", model_size: ModelSizes="32B",
+                      preview: bool=True, instruct: bool=False, force_dtype: Optional[str]=None) -> Qwen:
+    model, tokenizer, config = build(
+      max_seq_len, max_batch_size, model_desc, model_size, preview, instruct, force_dtype=force_dtype
+    )
+    return Qwen(model, tokenizer, config)
 
   def chat_completion(self, prompts: list[str], temperature: float=0.6, top_p: float=0.9,
                       max_gen_len: Optional[int]=None, logprobs: bool = False):
     return chat_completion(self, prompts, temperature, top_p, max_gen_len, logprobs)
 
 
-def chat_completion(generator: QwQ, dialogs: list[Dialog], temperature: float=0.6, top_p: float=0.9,
+def chat_completion(generator: Qwen, dialogs: list[Dialog], temperature: float=0.6, top_p: float=0.9,
                     max_gen_len: Optional[int]=None, logprobs: bool=False) -> list[ChatPrediction]:
   if max_gen_len is None:
     max_gen_len = generator.config.max_seq_len - 1

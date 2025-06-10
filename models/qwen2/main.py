@@ -1,4 +1,4 @@
-# TRANSFORMERS_VERBOSITY=info PYTHONPATH=. python models/qwen/main.py
+# TRANSFORMERS_VERBOSITY=info PYTHONPATH=. python models/qwen2/main.py
 
 # https://huggingface.co/Qwen/QwQ-32B-Preview
 # https://qwenlm.github.io/blog/qwq-32b-preview/
@@ -6,14 +6,16 @@
 # https://qwenlm.github.io/blog/qwq-32b/
 
 from models.helpers import set_device, set_seed
-from models.qwq.generate import QwQ
+from models.qwen2.generate import Qwen
 
 def instruct_example():
 
   device = set_device()
   set_seed(device)
 
-  generator = QwQ.from_pretrained(max_seq_len=512, max_batch_size=1).to(device)
+  generator = Qwen.from_pretrained(
+    max_seq_len=512, max_batch_size=1, model_desc="qwq", model_size="32B", preview=True, instruct=True,
+  ).to(device)
 
   dialogs = [
     [
