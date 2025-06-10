@@ -3,8 +3,7 @@ from typing import Optional
 import torch
 from torch import Tensor, nn
 
-from models.helpers import set_device
-from models.llama.rope import precompute_freqs_cis
+from models.qwen.rope import Qwen2RotaryEmbedding
 from models.llama.transformer import RMSNorm, FeedForward
 from models.qwen.attention import Attention
 
@@ -18,15 +17,15 @@ class Block(nn.Module):
     self.post_attention_layernorm = RMSNorm(dim, eps=norm_eps)
     self.mlp = FeedForward(dim, hidden_dim)
 
-  def forward(self, x: Tensor, start_pos: int, freqs_cis: Tensor, mask: Optional[Tensor]):
-    x = x + self.self_attn(self.input_layernorm(x), start_pos, freqs_cis, mask)
+  def forward(self, x: Tensor, start_pos: int, position_embeddings: tuple[Tensor], mask: Optional[Tensor]):
+    x = x + self.self_attn(self.input_layernorm(x), start_pos, position_embeddings, mask)
     x = x + self.mlp(self.post_attention_layernorm(x))
     return x
 
 
 class Transformer(nn.Module):
-  def __init__(self, dim: int, n_heads: int, n_kv_heads: int, head_dim: int, hidden_dim: int, n_layers: int,
-               max_batch_size: int, max_seq_len: int, vocab_size: int, norm_eps: float, rope_theta: float, **_):
+  def __init__(self, dim: int, n_heads: int, n_kv_heads: int, head_dim: int, hidden_dim: int, n_layers: int, max_batch_size: int,
+               max_seq_len: int, max_position_embeddings: int, vocab_size: int, norm_eps: float, rope_theta: float, **_):
     super().__init__()
     self.max_seq_len = max_seq_len
     self.model = nn.ModuleDict(dict(
@@ -36,8 +35,7 @@ class Transformer(nn.Module):
       norm = RMSNorm(dim, eps=norm_eps),
     ))
     self.lm_head = nn.Linear(dim, vocab_size, bias=False)
-    with torch.device(set_device(quiet=True)):
-      self.freqs_cis = precompute_freqs_cis(head_dim, max_seq_len * 2, rope_theta)
+    self.rotary_emb = Qwen2RotaryEmbedding(dim, head_dim, max_position_embeddings, rope_theta)
     print("number of parameters: %.2fB" % (self.get_num_params()/1e9,))
 
   def forward(self, tokens: Tensor, start_pos: int) -> Tensor:
@@ -45,8 +43,9 @@ class Transformer(nn.Module):
     assert seqlen > 0 and seqlen <= self.max_seq_len
     device = tokens.device
     h = self.model.embed_tokens(tokens)
-    self.freqs_cis = self.freqs_cis.to(device)
-    freqs_cis = self.freqs_cis[start_pos : start_pos + seqlen]
+    # create position embeddings to be shared across the decoder layers
+    position_ids = torch.arange(start_pos, start_pos + seqlen, device=device)
+    position_embeddings = self.rotary_emb(h, position_ids.unsqueeze(0))
 
     mask = None
     if seqlen > 1:
@@ -58,7 +57,7 @@ class Transformer(nn.Module):
       # (seqlen, cache_len + seqlen), and the only masked entries are (i, j) for
       # j > cache_len + i, since row i corresponds to token cache_len + i.
       mask = torch.hstack([torch.zeros((seqlen, start_pos), device=device), mask]).type_as(h)
-    for layer in self.model.layers: h = layer(h, start_pos, freqs_cis, mask)
+    for layer in self.model.layers: h = layer(h, start_pos, position_embeddings, mask)
 
     h = self.model.norm(h)
     output = self.lm_head(h).float()

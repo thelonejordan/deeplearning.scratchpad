@@ -45,11 +45,11 @@ def instruct_example():
 
 def huggingface_run():
 
-  from transformers import AutoModelForCausalLM, AutoTokenizer
+  from transformers import Qwen2ForCausalLM, AutoTokenizer
 
   model_name = "Qwen/QwQ-32B-Preview"
 
-  model = AutoModelForCausalLM.from_pretrained(
+  model = Qwen2ForCausalLM.from_pretrained(
     model_name,
     torch_dtype="auto",
     device_map="auto"
