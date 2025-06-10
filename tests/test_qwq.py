@@ -39,7 +39,7 @@ class TestQwQChat(unittest.TestCase):
     completion = tokenizer.batch_decode(self.outputs_target, skip_special_tokens=True, clean_up_tokenization_spaces=True)
     assert completion == self.completion_target, f"{completion=}\n\n{self.completion_target=}"
     output_ids_trunc = [g[len(i):] for g, i in zip(self.outputs_target, input_ids)]
-    assert output_ids_trunc == self.outputs_target_trunc, f"{output_ids_trunc}\n\n{self.outputs_target_trunc=}"
+    assert output_ids_trunc == self.outputs_target_trunc, f"{output_ids_trunc=}\n\n{self.outputs_target_trunc=}"
     completion_trunc = tokenizer.batch_decode(output_ids_trunc, skip_special_tokens=True, clean_up_tokenization_spaces=True)
     assert completion_trunc == self.completion_target_trunc, f"{completion_trunc=}\n\n{self.completion_target_trunc=}"
 
