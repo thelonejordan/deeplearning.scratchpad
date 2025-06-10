@@ -5,10 +5,11 @@ from models.helpers import timeit, Generator
 from models.llama2.transformer import Transformer
 from models.llama2.generate import generate, CompletionPrediction, ChatPrediction, Dialog
 from models.qwen2.config import QwenConfig
-from models.qwen2.load import build, ModelOptions, ModelSizes
+from models.qwen2.load import build
 
 def fixup_tokenizer(tokenizer):
-  # HACK: AttributeError: Qwen2TokenizerFast has no attribute pad_id (File "/workspace/deeplearning.scratchpad/models/llama2/generate.py")
+  # HACK: AttributeError: Qwen2TokenizerFast has no attribute pad_id
+  # (File "/workspace/deeplearning.scratchpad/models/llama2/generate.py")
   tokenizer.pad_id = tokenizer.encode(tokenizer.special_tokens_map['pad_token'])[0]
   tokenizer.eos_id = tokenizer.encode(tokenizer.special_tokens_map['eos_token'])[0]
   return tokenizer
@@ -20,11 +21,9 @@ class Qwen(Generator):
 
   @staticmethod
   @timeit(desc="Load time", ms=False)
-  def from_pretrained(max_seq_len: int=512, max_batch_size: int=8, model_desc: ModelOptions="qwq", model_size: ModelSizes="32B",
-                      preview: bool=True, instruct: bool=False, force_dtype: Optional[str]=None) -> Qwen:
-    model, tokenizer, config = build(
-      max_seq_len, max_batch_size, model_desc, model_size, preview, instruct, force_dtype=force_dtype
-    )
+  def from_pretrained(max_seq_len: int=512, max_batch_size: int=8,
+                      repo_id: str="Qwen/Qwen2.5-0.5B", force_dtype: Optional[str]=None) -> Qwen:
+    model, tokenizer, config = build(max_seq_len, max_batch_size, repo_id, force_dtype=force_dtype)
 
     return Qwen(model, fixup_tokenizer(tokenizer), config)
 

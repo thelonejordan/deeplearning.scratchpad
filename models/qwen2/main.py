@@ -13,7 +13,7 @@ def base_example():
   device = set_device()
   set_seed(device)
 
-  generator = Qwen.from_pretrained(max_batch_size=2, model_desc="2.5", model_size='0.5B', instruct=False)
+  generator = Qwen.from_pretrained(max_batch_size=2, repo_id="Qwen/Qwen2.5-0.5B")
   generator = generator.to(device)
 
   prompts = [
@@ -35,7 +35,7 @@ def instruct_example():
   device = set_device()
   set_seed(device)
 
-  generator = Qwen.from_pretrained(max_batch_size=1, model_desc="2.5", model_size="0.5B", instruct=True)
+  generator = Qwen.from_pretrained(max_batch_size=1, repo_id="Qwen/Qwen2.5-0.5B-Instruct")
   generator = generator.to(device)
 
   dialogs = [
