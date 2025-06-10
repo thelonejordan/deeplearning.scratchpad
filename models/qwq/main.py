@@ -1,7 +1,9 @@
 # TRANSFORMERS_VERBOSITY=info PYTHONPATH=. python models/qwen/main.py
 
-# https://github.com/huggingface/transformers/blob/main/src/transformers/models/qwen2/tokenization_qwen2.py
-# https://github.com/huggingface/transformers/blob/main/src/transformers/models/qwen2/modeling_qwen2.py
+# https://huggingface.co/Qwen/QwQ-32B-Preview
+# https://qwenlm.github.io/blog/qwq-32b-preview/
+# https://huggingface.co/Qwen/QwQ-32B
+# https://qwenlm.github.io/blog/qwq-32b/
 
 from models.helpers import set_device, set_seed
 from models.qwq.generate import QwQ
