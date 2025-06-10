@@ -5,7 +5,6 @@ import unittest
 from transformers import AutoTokenizer, Qwen2ForCausalLM
 from models.qwen2.generate import Qwen
 from models.qwen2.load import huggingface_repo_id
-from models.qwen2.main import fixup_tokenizer
 from models.llama2.generate import generate
 from models.helpers import set_device
 
@@ -69,7 +68,6 @@ class TestQwQChat(unittest.TestCase):
     generator = Qwen.from_pretrained(
       max_seq_len=MAX_SEQ_LEN, max_batch_size=len(self.dialogs), model_desc="qwq", model_size="32B", preview=True, instruct=True,
     ).to(DEVICE)
-    generator.tokenizer = fixup_tokenizer(generator.tokenizer)
     output_ids, _ = generate(
       generator, self.inputs_target, max_gen_len=MAX_SEQ_LEN, temperature=0,
     )
@@ -81,7 +79,6 @@ class TestQwQChat(unittest.TestCase):
     generator = Qwen.from_pretrained(
       max_seq_len=MAX_SEQ_LEN, max_batch_size=len(self.dialogs), model_desc="qwq", model_size="32B", preview=True, instruct=True,
     ).to(DEVICE)
-    generator.tokenizer = fixup_tokenizer(generator.tokenizer)
     out = generator.chat_completion(self.dialogs, temperature=0.)
     completion = [item['generation']["content"] for item in out]
     assert completion == self.completion_target_trunc, f"{completion=}\n\n{self.completion_target_trunc=}"

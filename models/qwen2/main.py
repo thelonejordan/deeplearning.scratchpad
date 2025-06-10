@@ -8,21 +8,13 @@
 from models.helpers import set_device, set_seed, CHAT
 from models.qwen2.generate import Qwen
 
-def fixup_tokenizer(tokenizer):
-  # HACK: AttributeError: Qwen2TokenizerFast has no attribute pad_id (File "/workspace/deeplearning.scratchpad/models/llama2/generate.py")
-  tokenizer.pad_id = tokenizer.encode(tokenizer.special_tokens_map['pad_token'])[0]
-  tokenizer.eos_id = tokenizer.encode(tokenizer.special_tokens_map['eos_token'])[0]
-  return tokenizer
-
-
 def base_example():
 
   device = set_device()
   set_seed(device)
 
-  generator = Qwen.from_pretrained(max_batch_size=2, model_desc='2.5', model_size='0.5B', instruct=False)
+  generator = Qwen.from_pretrained(max_batch_size=2, model_desc="2.5", model_size='0.5B', instruct=False)
   generator = generator.to(device)
-  generator.tokenizer = fixup_tokenizer(generator.tokenizer)
 
   prompts = [
     "Simply put, the theory of relativity states that",
@@ -43,10 +35,8 @@ def instruct_example():
   device = set_device()
   set_seed(device)
 
-  generator = Qwen.from_pretrained(
-    max_seq_len=512, max_batch_size=1, model_desc="qwq", model_size="32B", preview=True, instruct=True,
-  ).to(device)
-  generator.tokenizer = fixup_tokenizer(generator.tokenizer)
+  generator = Qwen.from_pretrained(max_batch_size=1, model_desc="2.5", model_size="0.5B", instruct=True)
+  generator = generator.to(device)
 
   dialogs = [
     [

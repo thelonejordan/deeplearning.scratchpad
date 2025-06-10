@@ -7,6 +7,12 @@ from models.llama2.generate import generate, CompletionPrediction, ChatPredictio
 from models.qwen2.config import QwenConfig
 from models.qwen2.load import build, ModelOptions, ModelSizes
 
+def fixup_tokenizer(tokenizer):
+  # HACK: AttributeError: Qwen2TokenizerFast has no attribute pad_id (File "/workspace/deeplearning.scratchpad/models/llama2/generate.py")
+  tokenizer.pad_id = tokenizer.encode(tokenizer.special_tokens_map['pad_token'])[0]
+  tokenizer.eos_id = tokenizer.encode(tokenizer.special_tokens_map['eos_token'])[0]
+  return tokenizer
+
 
 class Qwen(Generator):
   def __init__(self, model: Transformer, tokenizer, config: QwenConfig):
@@ -19,7 +25,8 @@ class Qwen(Generator):
     model, tokenizer, config = build(
       max_seq_len, max_batch_size, model_desc, model_size, preview, instruct, force_dtype=force_dtype
     )
-    return Qwen(model, tokenizer, config)
+
+    return Qwen(model, fixup_tokenizer(tokenizer), config)
 
   def text_completion(self, prompts: list[str], temperature: float=0.6, top_p: float=0.9,
                       max_gen_len: Optional[int]=None, logprobs: bool = False, echo: bool = False):
