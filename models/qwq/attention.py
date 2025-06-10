@@ -5,7 +5,7 @@ import torch
 from torch import Tensor, nn
 
 from models.helpers import SDPA, set_device
-from models.qwen.rope import apply_rotary_pos_emb
+from models.qwq.rope import apply_rotary_pos_emb
 from models.llama.attention import _attention, _fused_attention
 
 

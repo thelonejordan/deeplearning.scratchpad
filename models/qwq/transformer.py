@@ -3,9 +3,9 @@ from typing import Optional
 import torch
 from torch import Tensor, nn
 
-from models.qwen.rope import Qwen2RotaryEmbedding
+from models.qwq.rope import Qwen2RotaryEmbedding
 from models.llama.transformer import RMSNorm, FeedForward
-from models.qwen.attention import Attention
+from models.qwq.attention import Attention
 
 
 class Block(nn.Module):

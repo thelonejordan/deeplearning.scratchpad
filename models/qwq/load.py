@@ -4,8 +4,8 @@ from dataclasses import asdict
 import torch
 from transformers import AutoTokenizer
 
-from models.qwen.config import QwQConfig
-from models.qwen.transformer import Transformer
+from models.qwq.config import QwQConfig
+from models.qwq.transformer import Transformer
 from models.llama.load import convert_from_huggingface
 from models.llama2.load import _safetensors_load
 

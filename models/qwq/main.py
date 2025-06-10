@@ -1,0 +1,36 @@
+# TRANSFORMERS_VERBOSITY=info PYTHONPATH=. python models/qwen/main.py
+
+# https://github.com/huggingface/transformers/blob/main/src/transformers/models/qwen2/tokenization_qwen2.py
+# https://github.com/huggingface/transformers/blob/main/src/transformers/models/qwen2/modeling_qwen2.py
+
+from models.helpers import set_device, set_seed
+from models.qwq.generate import QwQ
+
+def instruct_example():
+
+  device = set_device()
+  set_seed(device)
+
+  generator = QwQ.from_pretrained(max_seq_len=512, max_batch_size=1).to(device)
+
+  dialogs = [
+    [
+      dict(role="system", content="You are a helpful and truthful assistant. You should think step-by-step."),
+      dict(role="user", content="How many r in strawberry.")
+    ],
+  ]
+
+  # HACK: AttributeError: Qwen2TokenizerFast has no attribute pad_id (File "/workspace/deeplearning.scratchpad/models/llama2/generate.py")
+  generator.tokenizer.pad_id = generator.tokenizer.encode(generator.tokenizer.special_tokens_map['pad_token'])[0]
+  generator.tokenizer.eos_id = generator.tokenizer.encode(generator.tokenizer.special_tokens_map['eos_token'])[0]
+  out = generator.chat_completion(dialogs)
+  assert len(out) == len(dialogs)
+  print('-' * 50)
+  for item in out:
+    text = item['generation']["content"]
+    print(text)
+    print('-' * 50)
+
+
+if __name__ == "__main__":
+  instruct_example()

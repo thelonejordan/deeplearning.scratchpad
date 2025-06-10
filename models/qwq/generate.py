@@ -1,10 +1,11 @@
 from __future__ import annotations
 from typing import Optional
+
+from models.helpers import timeit, Generator
 from models.llama2.transformer import Transformer
 from models.llama2.generate import generate, Dialog, ChatPrediction
-from models.qwen.config import QwQConfig
-from models.helpers import timeit, Generator
-from models.qwen.load import build
+from models.qwq.config import QwQConfig
+from models.qwq.load import build
 
 
 class QwQ(Generator):

@@ -3,14 +3,16 @@
 import unittest
 
 from transformers import AutoTokenizer, Qwen2ForCausalLM
-from models.qwen.generate import QwQ
-from models.qwen.load import huggingface_repo_id
+from models.qwq.generate import QwQ
+from models.qwq.load import huggingface_repo_id
 from models.llama2.generate import generate
 from models.helpers import set_device
 
 DEVICE = set_device()
 MAX_SEQ_LEN = 256
 
+
+# TODO: fails with SDPA=0
 
 class TestQwQChat(unittest.TestCase):
   def setUp(self):
