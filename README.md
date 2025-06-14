@@ -9,7 +9,8 @@
 	- [x] [Llama3 Family](models/llama3/)
 	- [x] [Mistral 7B](models/mistral_rolling/)
 	- [x] [Mixtral 8x7B](models/mixtral.py)
-	- [x] [Qwen QwQ 32B](models/qwq/)
+	- [x] [Qwen2 Family](models/qwen2/)
+	- [x] [QwQ 32B](models/qwen2/)
 	- [ ] DeepSeek ...
 	- [ ] Gemini ...
 	- [ ] Grok

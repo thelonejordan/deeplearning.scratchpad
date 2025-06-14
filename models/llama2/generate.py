@@ -127,7 +127,7 @@ def generate(generator: Llama, prompt_tokens: list[list[int]], max_gen_len: int,
         probs = probs[:eos_idx]
     out_tokens.append(toks)
     if logprobs:
-      out_logprobs.append(probs.tolist())
+      out_logprobs.append(probs)
   return out_tokens, (out_logprobs if logprobs else None)
 
 
@@ -240,9 +240,7 @@ def chat_completion(generator: Llama, dialogs: list[Dialog], temperature: float=
         "tokens": [generator.tokenizer.decode(x) for x in t],
         "logprobs": logprobs_i,
       }
-      for t, logprobs_i, unsafe in zip(
-        generation_tokens, generation_logprobs, unsafe_requests
-      )
+      for t, logprobs_i, unsafe in zip(generation_tokens, generation_logprobs, unsafe_requests)
     ]
   return [
     {

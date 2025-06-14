@@ -6,9 +6,9 @@ from typing import Optional
 import torch
 from torch import Tensor, nn
 
-from models.qwq.rope import Qwen2RotaryEmbedding
+from models.qwen2.rope import Qwen2RotaryEmbedding
 from models.llama.transformer import RMSNorm, FeedForward
-from models.qwq.attention import Attention
+from models.qwen2.attention import Attention
 
 
 class Block(nn.Module):
@@ -65,6 +65,10 @@ class Transformer(nn.Module):
     h = self.model.norm(h)
     output = self.lm_head(h).float()
     return output
+
+  def tie_word_embeddings(self):
+    self.lm_head.weight = self.model.embed_tokens.weight
+    return self
 
   def get_num_params(self, non_embedding=True):
     n_params = sum(p.numel() for p in self.parameters())
