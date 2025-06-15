@@ -48,7 +48,8 @@ def huggingface_repo_id(model_desc: str="3B", version: str="2", instruct: bool=F
   return f'meta-llama/{prefix}Llama-3{v}-{model_desc}' + ('-Instruct' if instruct else '')
 
 def build(max_seq_len: int, max_batch_size: int, seed: int=1,
-          model_desc: ModelOptions='8B', version: VersionOptions='0', instruct: bool=False, safetensors: bool=True, force_dtype: Optional[str]=None):
+          model_desc: ModelOptions='8B', version: VersionOptions='0', instruct: bool=False, safetensors: bool=True,
+          force_dtype: Optional[str]=None, model_class: type[Transformer]=Transformer):
   repo_id = huggingface_repo_id(model_desc, version, instruct, safetensors)
   v = '' if version == '0' else f'.{version}'
   params = CONFIGS[f"3{v}"][model_desc]
@@ -80,7 +81,7 @@ def build(max_seq_len: int, max_batch_size: int, seed: int=1,
   default_dtype = torch.get_default_dtype()
   torch.set_default_dtype(getattr(torch, config.torch_dtype))
   with torch.device("meta"):
-    model = Transformer(**asdict(config))
+    model = model_class(**asdict(config), **{'tokenizer': tokenizer, 'config': config})
   _model = model
   if tie_word_embeddings:
     _model = model.model
@@ -89,4 +90,4 @@ def build(max_seq_len: int, max_batch_size: int, seed: int=1,
   _model.load_state_dict(state_dict, assign=True, strict=True)
   torch.set_default_dtype(default_dtype)
   if tie_word_embeddings: model = model.apply_weight_sharing()
-  return model, tokenizer, config
+  return model
