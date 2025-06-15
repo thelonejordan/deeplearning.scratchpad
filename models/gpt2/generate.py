@@ -26,7 +26,7 @@ class GPT2(Transformer, Generator):
     return generator
 
   @property
-  def G(self): return GPT2Generator(self, self.config.n_ctx, self.tokenizer.pad_id)
+  def G(self): return GPT2Generator(self, self.tokenizer, self.config.n_ctx, self.tokenizer.pad_id)
 
   def text_completion(self, prompts: list[str], max_new_tokens: int,
                       temperature: float=1.0, top_k: int=0, top_p: float=1.0):
@@ -36,6 +36,7 @@ class GPT2(Transformer, Generator):
 @dataclass
 class GPT2Generator:
   model: GPT2
+  tokenizer: Tokenizer
   context_len: int
   pad_id: int
 
@@ -79,7 +80,7 @@ def generate(generator: GPT2Generator, prompt_tokens: list[list[int]], max_new_t
 @torch.inference_mode()
 def text_completion(generator: GPT2Generator, prompts: list[str], max_new_tokens: int,
                     temperature: float=1.0, top_k: int=0, top_p: float=1.0):
-  tokenizer = generator['tokenizer']
+  tokenizer = generator.tokenizer
   prompt_tokens = tokenizer.encode_batch(prompts)
   completions = generate(generator, prompt_tokens, max_new_tokens, temperature, top_k, top_p)
   return tokenizer.decode_batch(completions)
