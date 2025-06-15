@@ -42,7 +42,8 @@ def huggingface_repo_id(model_desc: str="7B", chat: bool=False, safetensors: boo
   suffix = ('-chat' if chat else '') + ('-hf' if safetensors else '')
   return f'meta-llama/Llama-2-{model_desc.lower()}{suffix}'
 
-def build(max_seq_len: int, max_batch_size: int, model_desc: ModelOptions='7B', chat: bool=False, safetensors: bool=True, force_dtype: Optional[str]=None):
+def build(max_seq_len: int, max_batch_size: int, model_desc: ModelOptions='7B', chat: bool=False, safetensors: bool=True,
+          force_dtype: Optional[str]=None, model_class: type[Transformer]=Transformer):
   repo_id = huggingface_repo_id(model_desc, chat, safetensors)
   params = CONFIGS[model_desc]
   if force_dtype is not None:
@@ -70,7 +71,7 @@ def build(max_seq_len: int, max_batch_size: int, model_desc: ModelOptions='7B', 
   default_dtype = torch.get_default_dtype()
   torch.set_default_dtype(getattr(torch, config.torch_dtype))
   with torch.device("meta"):
-    model = Transformer(**asdict(config))
+    model = model_class(**asdict(config), **{'tokenizer': tokenizer, 'config': config})
   model.load_state_dict(state_dict, assign=True, strict=True)
   torch.set_default_dtype(default_dtype)
-  return model, tokenizer, config
+  return model

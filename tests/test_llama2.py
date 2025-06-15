@@ -55,7 +55,7 @@ def self_run(prompts: list[str], model_desc: str="7B"):
   ).to(DEVICE)
   tokenizer = generator.tokenizer
   inputs = [tokenizer.encode(s, bos=True, eos=False) for s in prompts]
-  outputs, _ = generate(generator, inputs, max_gen_len=max_seq_len, temperature=0.0, echo=True)
+  outputs, _ = generate(generator.G, inputs, max_gen_len=max_seq_len, temperature=0.0, echo=True)
   outputs_ = [i[i.index(tokenizer.bos_id)+1:]for i in outputs]
   texts = [tokenizer.decode(toks) for toks in outputs_]
   return inputs, outputs, texts
