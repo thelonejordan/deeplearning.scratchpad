@@ -1,3 +1,5 @@
+from __future__ import annotations
+from dataclasses import dataclass
 from tqdm import trange
 
 import torch
@@ -9,26 +11,38 @@ from models.llama.tokenizer import Tokenizer
 from models.llama.config import LlamaConfig
 from models.llama.load import build, ModelOptions
 
-class Llama(Generator):
-  def __init__(self, model: Transformer, tokenizer: Tokenizer, config: LlamaConfig):
-    self.model, self.tokenizer, self.config = model, tokenizer, config
+class Llama(Transformer, Generator):
+  def __init__(self, *args, **kwargs):
+    assert "config" in kwargs and "tokenizer" in kwargs
+    self.config: LlamaConfig = kwargs.pop("config")
+    self.tokenizer: Tokenizer = kwargs.pop("tokenizer")
+    super().__init__(*args, **kwargs)
 
   @staticmethod
   @timeit(desc="Load time", ms=False)
   def from_pretrained(max_seq_len: int=512, max_batch_size: int=8, model_desc: ModelOptions='7B'):
-    model, tokenizer, config = build(max_seq_len, max_batch_size, model_desc, safetensors=bool(SAFETENSORS))
-    return Llama(model, tokenizer, config)
+    generator: Llama = build(max_seq_len, max_batch_size, model_desc, safetensors=bool(SAFETENSORS), model_class=Llama)
+    return generator
 
   def text_completion(self, prompts: list[str], max_gen_len: int,
                       temperature: float=0.8, top_p: float=0.95) -> list[str]:
     return text_completion(self, prompts, max_gen_len, temperature, top_p)
 
 
+@dataclass
+class LlamaGenerator:
+  model: Llama
+  tokenizer: Tokenizer
+  max_seq_len: int
+  max_batch_size: int
+
+
 @torch.inference_mode()
-def generate(generator: Llama, prompt_tokens: list[list[int]],
+def generate(generator: LlamaGenerator, prompt_tokens: list[list[int]],
              max_gen_len: int, temperature: float=0.8, top_p: float=0.95) -> list[list[int]]:
-  model, tokenizer, device = generator.model, generator.tokenizer, generator.device
-  max_batch_size, max_seq_len = generator.config.max_batch_size, generator.config.max_seq_len
+  model, tokenizer = generator.model, generator.tokenizer
+  max_batch_size, max_seq_len = generator.max_batch_size, generator.max_seq_len
+  device = model.device
   bsz = len(prompt_tokens)
   assert bsz <= max_batch_size, (bsz, max_batch_size)
   min_prompt_size = min([len(t) for t in prompt_tokens])

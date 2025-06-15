@@ -1,3 +1,6 @@
+from __future__ import annotations
+from dataclasses import dataclass
+
 import torch
 from torch import Tensor
 from torch.nn import functional as F
@@ -11,26 +14,37 @@ from models.gpt2.transformer import Transformer
 
 class GPT2(Transformer, Generator):
   def __init__(self, *args, **kwargs):
-    assert "tokenizer" in kwargs and "config" in kwargs
-    self.tokenizer, self.config = kwargs.pop("tokenizer"), kwargs.pop("config")
+    assert "config" in kwargs and "tokenizer" in kwargs
+    self.config: GPTConfig = kwargs.pop("config")
+    self.tokenizer: Tokenizer = kwargs.pop("tokenizer")
     super().__init__(*args, **kwargs)
 
   @staticmethod
   @timeit(desc="Load time", ms=False)
   def from_pretrained(model_desc: ModelOptions='gpt2'):
-    generator = build(model_desc, safetensors=bool(SAFETENSORS), model_class=GPT2)
+    generator: GPT2 = build(model_desc, safetensors=bool(SAFETENSORS), model_class=GPT2)
     return generator
+
+  @property
+  def G(self): return GPT2Generator(self, self.tokenizer, self.config.n_ctx)
 
   def text_completion(self, prompts: list[str], max_new_tokens: int,
                       temperature: float=1.0, top_k: int=0, top_p: float=1.0):
-    return text_completion(self, prompts, max_new_tokens, temperature, top_k, top_p)
+    return text_completion(self.G, prompts, max_new_tokens, temperature, top_k, top_p)
+
+
+@dataclass
+class GPT2Generator:
+  model: GPT2
+  tokenizer: Tokenizer
+  context_len: int
 
 
 @torch.inference_mode()
-def generate(generator: GPT2, prompt_tokens: list[list[int]], max_new_tokens: int,
+def generate(generator: GPT2Generator, prompt_tokens: list[list[int]], max_new_tokens: int,
              temperature: float=1.0, top_k: int=0, top_p: float=1.0):
-  model, tokenizer = generator, generator.tokenizer
-  n_ctx, device = generator.config.n_ctx, generator.device
+  model, tokenizer, n_ctx = generator.model, generator.tokenizer, generator.context_len
+  device = model.device
   min_prompt_size = min([len(t) for t in prompt_tokens])
   max_prompt_size = max([len(t) for t in prompt_tokens])
   total_len = min(n_ctx, max_prompt_size + max_new_tokens)
@@ -63,9 +77,9 @@ def generate(generator: GPT2, prompt_tokens: list[list[int]], max_new_tokens: in
 
 
 @torch.inference_mode()
-def text_completion(generator: GPT2, prompts: list[str], max_new_tokens: int,
+def text_completion(generator: GPT2Generator, prompts: list[str], max_new_tokens: int,
                     temperature: float=1.0, top_k: int=0, top_p: float=1.0):
-  tokenizer = generator.tokenizer
+  tokenizer = generator['tokenizer']
   prompt_tokens = tokenizer.encode_batch(prompts)
   completions = generate(generator, prompt_tokens, max_new_tokens, temperature, top_k, top_p)
   return tokenizer.decode_batch(completions)
