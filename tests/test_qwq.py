@@ -3,14 +3,12 @@
 import unittest
 
 from transformers import AutoTokenizer, Qwen2ForCausalLM
-from models.qwq.generate import QwQ
-from models.qwq.load import huggingface_repo_id
+from models.qwen2.generate import Qwen
 from models.llama2.generate import generate
-from models.helpers import set_device
+from models.helpers import set_device, TESTING_MINIMAL
 
 DEVICE = set_device()
 MAX_SEQ_LEN = 256
-
 
 # TODO: fails with SDPA=0
 
@@ -31,7 +29,7 @@ class TestQwQChat(unittest.TestCase):
     self.completion_target_trunc = ['So I have this question: "How many r\'s are in\'strawberry\'?" It seems pretty straightforward, but I want to make sure I understand it correctly. The word is "strawberry," and I need to count how many times the letter "r" appears in it.\n\nFirst, I\'ll write out the word to see it clearly: s-t-r-a-w-b-e-r-r-y.\n\nNow, I\'ll go through each letter one by one and count the "r"s.\n\nStarting with the first letter: s – that\'s not an r.\n\nNext is t – not an r.\n\nThen r – that\'s one r.\n\nNext is a – not an r.\n\nW – not an r.\n\nB – not an r.\n\nE – not an r.\n\nAnother r – that\'s the second r.\n\nAnother r – that\'s the third r.\n\nAnd finally, y – not an r.\n\nSo, let\'s see, I\'ve counted three r\'s in "strawberry."\n\nWait a minute, is that right? Let me double-check.\n\nS-t-r-a-w-b']
 
   def test_qwq_inputs_text(self):
-    repo_id = huggingface_repo_id()
+    repo_id = "Qwen/QwQ-32B-Preview"
     tokenizer = AutoTokenizer.from_pretrained(repo_id)
     inputs_text = tokenizer.apply_chat_template(self.dialogs, tokenize=False, add_generation_prompt=True)
     assert inputs_text == self.inputs_text_target, f"{inputs_text=}"
@@ -40,13 +38,14 @@ class TestQwQChat(unittest.TestCase):
     completion = tokenizer.batch_decode(self.outputs_target, skip_special_tokens=True, clean_up_tokenization_spaces=True)
     assert completion == self.completion_target, f"{completion=}\n\n{self.completion_target=}"
     output_ids_trunc = [g[len(i):] for g, i in zip(self.outputs_target, input_ids)]
-    assert output_ids_trunc == self.outputs_target_trunc, f"{output_ids_trunc}\n\n{self.outputs_target_trunc=}"
+    assert output_ids_trunc == self.outputs_target_trunc, f"{output_ids_trunc=}\n\n{self.outputs_target_trunc=}"
     completion_trunc = tokenizer.batch_decode(output_ids_trunc, skip_special_tokens=True, clean_up_tokenization_spaces=True)
     assert completion_trunc == self.completion_target_trunc, f"{completion_trunc=}\n\n{self.completion_target_trunc=}"
 
-  def test_qwq_hugginface(self):
-    repo_id = huggingface_repo_id()
-    tokenizer = AutoTokenizer.from_pretrained(huggingface_repo_id())
+  @unittest.skipIf(bool(TESTING_MINIMAL), "testing minimal")
+  def test_qwq_hugginface_chat_completion(self):
+    repo_id = "Qwen/QwQ-32B-Preview"
+    tokenizer = AutoTokenizer.from_pretrained(repo_id)
     model = Qwen2ForCausalLM.from_pretrained(repo_id, torch_dtype="auto", device_map=DEVICE)
     inputs_text = tokenizer.apply_chat_template(self.dialogs, tokenize=False, add_generation_prompt=True)
     model_inputs = tokenizer(inputs_text, return_tensors="pt").to(model.device)
@@ -64,10 +63,11 @@ class TestQwQChat(unittest.TestCase):
     completion_trunc = tokenizer.batch_decode(generated_ids_trunc, skip_special_tokens=True, clean_up_tokenization_spaces=True)
     assert completion_trunc == self.completion_target_trunc, f"{completion_trunc=}\n\n{self.completion_target_trunc=}"
 
+  @unittest.skipIf(bool(TESTING_MINIMAL), "testing minimal")
   def test_qwq_self_text_completion(self):
-    generator = QwQ.from_pretrained(max_seq_len=MAX_SEQ_LEN, max_batch_size=len(self.dialogs)).to(DEVICE)
-    generator.tokenizer.pad_id = generator.tokenizer.encode(generator.tokenizer.special_tokens_map['pad_token'])[0]
-    generator.tokenizer.eos_id = generator.tokenizer.encode(generator.tokenizer.special_tokens_map['eos_token'])[0]
+    generator = Qwen.from_pretrained(
+      max_seq_len=MAX_SEQ_LEN, max_batch_size=len(self.dialogs), repo_id="Qwen/QwQ-32B-Preview",
+    ).to(DEVICE)
     output_ids, _ = generate(
       generator, self.inputs_target, max_gen_len=MAX_SEQ_LEN, temperature=0,
     )
@@ -75,10 +75,11 @@ class TestQwQChat(unittest.TestCase):
     completion = generator.tokenizer.batch_decode(output_ids, skip_special_tokens=True, clean_up_tokenization_spaces=True)
     assert completion == self.completion_target_trunc, f"{completion=}\n\n{self.completion_target_trunc=}"
 
+  @unittest.skipIf(bool(TESTING_MINIMAL), "testing minimal")
   def test_qwq_self_chat_completion(self):
-    generator = QwQ.from_pretrained(max_seq_len=MAX_SEQ_LEN, max_batch_size=len(self.dialogs)).to(DEVICE)
-    generator.tokenizer.pad_id = generator.tokenizer.encode(generator.tokenizer.special_tokens_map['pad_token'])[0]
-    generator.tokenizer.eos_id = generator.tokenizer.encode(generator.tokenizer.special_tokens_map['eos_token'])[0]
+    generator = Qwen.from_pretrained(
+      max_seq_len=MAX_SEQ_LEN, max_batch_size=len(self.dialogs), repo_id="Qwen/QwQ-32B-Preview",
+    ).to(DEVICE)
     out = generator.chat_completion(self.dialogs, temperature=0.)
     completion = [item['generation']["content"] for item in out]
     assert completion == self.completion_target_trunc, f"{completion=}\n\n{self.completion_target_trunc=}"

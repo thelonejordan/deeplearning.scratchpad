@@ -240,9 +240,7 @@ def chat_completion(generator: Llama, dialogs: list[Dialog], temperature: float=
         "tokens": [generator.tokenizer.decode(x) for x in t],
         "logprobs": logprobs_i,
       }
-      for t, logprobs_i, unsafe in zip(
-        generation_tokens, generation_logprobs, unsafe_requests
-      )
+      for t, logprobs_i, unsafe in zip(generation_tokens, generation_logprobs, unsafe_requests)
     ]
   return [
     {
