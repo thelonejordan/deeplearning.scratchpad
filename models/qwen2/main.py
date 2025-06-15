@@ -49,7 +49,7 @@ def instruct_example():
   assert len(out) == len(dialogs)
   print('-' * 50)
   for item in out:
-    text = item['generation']["content"]
+    text = item['generation']['content']
     print(text)
     print('-' * 50)
 
