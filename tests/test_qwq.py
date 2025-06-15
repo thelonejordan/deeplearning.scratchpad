@@ -5,11 +5,10 @@ import unittest
 from transformers import AutoTokenizer, Qwen2ForCausalLM
 from models.qwen2.generate import Qwen
 from models.llama2.generate import generate
-from models.helpers import set_device
+from models.helpers import set_device, TESTING_MINIMAL
 
 DEVICE = set_device()
 MAX_SEQ_LEN = 256
-
 
 # TODO: fails with SDPA=0
 
@@ -43,7 +42,8 @@ class TestQwQChat(unittest.TestCase):
     completion_trunc = tokenizer.batch_decode(output_ids_trunc, skip_special_tokens=True, clean_up_tokenization_spaces=True)
     assert completion_trunc == self.completion_target_trunc, f"{completion_trunc=}\n\n{self.completion_target_trunc=}"
 
-  def test_qwq_hugginface(self):
+  @unittest.skipIf(bool(TESTING_MINIMAL), "testing minimal")
+  def test_qwq_hugginface_chat_completion(self):
     repo_id = "Qwen/QwQ-32B-Preview"
     tokenizer = AutoTokenizer.from_pretrained(repo_id)
     model = Qwen2ForCausalLM.from_pretrained(repo_id, torch_dtype="auto", device_map=DEVICE)
@@ -63,6 +63,7 @@ class TestQwQChat(unittest.TestCase):
     completion_trunc = tokenizer.batch_decode(generated_ids_trunc, skip_special_tokens=True, clean_up_tokenization_spaces=True)
     assert completion_trunc == self.completion_target_trunc, f"{completion_trunc=}\n\n{self.completion_target_trunc=}"
 
+  @unittest.skipIf(bool(TESTING_MINIMAL), "testing minimal")
   def test_qwq_self_text_completion(self):
     generator = Qwen.from_pretrained(
       max_seq_len=MAX_SEQ_LEN, max_batch_size=len(self.dialogs), repo_id="Qwen/QwQ-32B-Preview",
@@ -74,6 +75,7 @@ class TestQwQChat(unittest.TestCase):
     completion = generator.tokenizer.batch_decode(output_ids, skip_special_tokens=True, clean_up_tokenization_spaces=True)
     assert completion == self.completion_target_trunc, f"{completion=}\n\n{self.completion_target_trunc=}"
 
+  @unittest.skipIf(bool(TESTING_MINIMAL), "testing minimal")
   def test_qwq_self_chat_completion(self):
     generator = Qwen.from_pretrained(
       max_seq_len=MAX_SEQ_LEN, max_batch_size=len(self.dialogs), repo_id="Qwen/QwQ-32B-Preview",
