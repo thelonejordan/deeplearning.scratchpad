@@ -31,7 +31,7 @@ def self_run(prompts: list[str], model_desc: str="gpt2"):
   tokenizer.pad_id = tokenizer.eos_id
   inputs = tokenizer.encode_batch(prompts)
   max_new_tokens = max_seq_len - max([len(i) for i in inputs])
-  outputs = generate(generator, inputs, max_new_tokens, temperature=0.0)
+  outputs = generate(generator.G, inputs, max_new_tokens, temperature=0.0)
   texts = tokenizer.decode_batch(outputs)
   return inputs, outputs, texts
 
