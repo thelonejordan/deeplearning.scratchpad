@@ -127,7 +127,7 @@ def generate(generator: Llama, prompt_tokens: list[list[int]], max_gen_len: int,
         probs = probs[:eos_idx]
     out_tokens.append(toks)
     if logprobs:
-      out_logprobs.append(probs.tolist())
+      out_logprobs.append(probs)
   return out_tokens, (out_logprobs if logprobs else None)
 
 
