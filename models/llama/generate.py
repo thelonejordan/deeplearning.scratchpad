@@ -24,9 +24,13 @@ class Llama(Transformer, Generator):
     generator: Llama = build(max_seq_len, max_batch_size, model_desc, safetensors=bool(SAFETENSORS), model_class=Llama)
     return generator
 
+  @property
+  def G(self):
+    return LlamaGenerator(self, self.tokenizer, self.config.max_seq_len, self.config.max_batch_size, self.tokenizer.pad_id)
+
   def text_completion(self, prompts: list[str], max_gen_len: int,
                       temperature: float=0.8, top_p: float=0.95) -> list[str]:
-    return text_completion(self, prompts, max_gen_len, temperature, top_p)
+    return text_completion(self.G, prompts, max_gen_len, temperature, top_p)
 
 
 @dataclass
@@ -35,12 +39,13 @@ class LlamaGenerator:
   tokenizer: Tokenizer
   max_seq_len: int
   max_batch_size: int
+  pad_id: int
 
 
 @torch.inference_mode()
 def generate(generator: LlamaGenerator, prompt_tokens: list[list[int]],
              max_gen_len: int, temperature: float=0.8, top_p: float=0.95) -> list[list[int]]:
-  model, tokenizer = generator.model, generator.tokenizer
+  model, pad_id = generator.model, generator.pad_id
   max_batch_size, max_seq_len = generator.max_batch_size, generator.max_seq_len
   device = model.device
   bsz = len(prompt_tokens)
@@ -49,10 +54,10 @@ def generate(generator: LlamaGenerator, prompt_tokens: list[list[int]],
   max_prompt_size = max([len(t) for t in prompt_tokens])
   total_len = min(max_seq_len, max_gen_len + max_prompt_size)
   tokens = torch.full(
-    (len(prompt_tokens), total_len), tokenizer.pad_id, device=device, dtype=torch.long)
+    (len(prompt_tokens), total_len), pad_id, device=device, dtype=torch.long)
   for k, t in enumerate(prompt_tokens):
     tokens[k, : len(t)] = torch.tensor(t, device=device, dtype=torch.long)
-  input_text_mask = tokens != tokenizer.pad_id
+  input_text_mask = tokens != pad_id
   prev_pos = 0
   model.eval()
   for cur_pos in trange(min_prompt_size, total_len, desc='Generating tokens'):
@@ -72,9 +77,9 @@ def generate(generator: LlamaGenerator, prompt_tokens: list[list[int]],
 
 
 @torch.inference_mode()
-def text_completion(generator: Llama, prompts: list[str], max_gen_len: int,
+def text_completion(generator: LlamaGenerator, prompts: list[str], max_gen_len: int,
                     temperature: float=0.8, top_p: float=0.95) -> list[str]:
-  tokenizer, max_batch_size = generator.tokenizer, generator.config.max_batch_size
+  tokenizer, max_batch_size = generator.tokenizer, generator.max_batch_size
   bsz = len(prompts)
   assert bsz <= max_batch_size, (bsz, max_batch_size)
   prompt_tokens = [tokenizer.encode(x, bos=True, eos=False) for x in prompts]
