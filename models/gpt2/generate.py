@@ -9,15 +9,17 @@ from models.gpt2.tokenizer import Tokenizer
 from models.gpt2.transformer import Transformer
 
 
-class GPT2(Generator):
-  def __init__(self, model: Transformer, tokenizer: Tokenizer, config: GPTConfig):
-    self.model, self.tokenizer, self.config = model, tokenizer, config
+class GPT2(Transformer, Generator):
+  def __init__(self, *args, **kwargs):
+    assert "tokenizer" in kwargs and "config" in kwargs
+    self.tokenizer, self.config = kwargs.pop("tokenizer"), kwargs.pop("config")
+    super().__init__(*args, **kwargs)
 
   @staticmethod
   @timeit(desc="Load time", ms=False)
   def from_pretrained(model_desc: ModelOptions='gpt2'):
-    model, tokenizer, config = build(model_desc, safetensors=bool(SAFETENSORS))
-    return GPT2(model, tokenizer, config)
+    generator = build(model_desc, safetensors=bool(SAFETENSORS), model_class=GPT2)
+    return generator
 
   def text_completion(self, prompts: list[str], max_new_tokens: int,
                       temperature: float=1.0, top_k: int=0, top_p: float=1.0):
@@ -27,7 +29,7 @@ class GPT2(Generator):
 @torch.inference_mode()
 def generate(generator: GPT2, prompt_tokens: list[list[int]], max_new_tokens: int,
              temperature: float=1.0, top_k: int=0, top_p: float=1.0):
-  model, tokenizer = generator.model, generator.tokenizer
+  model, tokenizer = generator, generator.tokenizer
   n_ctx, device = generator.config.n_ctx, generator.device
   min_prompt_size = min([len(t) for t in prompt_tokens])
   max_prompt_size = max([len(t) for t in prompt_tokens])

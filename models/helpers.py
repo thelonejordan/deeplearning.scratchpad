@@ -48,12 +48,12 @@ def set_seed(device: torch.device, seed: Optional[int]=None):
 
 class Generator:
   @property
-  def device(self) -> torch.device: return next(cast(torch.nn.Module, self.model).parameters()).device  # type: ignore
-  @property
-  def dtype(self) -> torch.dtype: return next(cast(torch.nn.Module, self.model).parameters()).dtype  # type: ignore
-  def to(self, device: torch.device):
-    self.model = cast(torch.nn.Module, self.model).to(device)  # type: ignore
-    return self
+  def device(self) -> torch.device: return next(cast(torch.nn.Module, self).parameters()).device  # type: ignore
+  # @property
+  # def dtype(self) -> torch.dtype: return next(cast(torch.nn.Module, self.model).parameters()).dtype  # type: ignore
+  # def to(self, device: torch.device):
+  #   self.model = cast(torch.nn.Module, self.model).to(device)  # type: ignore
+  #   return self
 
 
 @functools.cache
