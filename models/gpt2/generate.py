@@ -26,7 +26,7 @@ class GPT2(Transformer, Generator):
     return generator
 
   @property
-  def G(self): return GPT2Generator(self, self.tokenizer, self.config.n_ctx)
+  def G(self): return GPT2Generator(self, self.config.n_ctx, self.tokenizer.pad_id)
 
   def text_completion(self, prompts: list[str], max_new_tokens: int,
                       temperature: float=1.0, top_k: int=0, top_p: float=1.0):
@@ -36,20 +36,20 @@ class GPT2(Transformer, Generator):
 @dataclass
 class GPT2Generator:
   model: GPT2
-  tokenizer: Tokenizer
   context_len: int
+  pad_id: int
 
 
 @torch.inference_mode()
 def generate(generator: GPT2Generator, prompt_tokens: list[list[int]], max_new_tokens: int,
              temperature: float=1.0, top_k: int=0, top_p: float=1.0):
-  model, tokenizer, n_ctx = generator.model, generator.tokenizer, generator.context_len
+  model, n_ctx, pad_id = generator.model, generator.context_len, generator.pad_id
   device = model.device
   min_prompt_size = min([len(t) for t in prompt_tokens])
   max_prompt_size = max([len(t) for t in prompt_tokens])
   total_len = min(n_ctx, max_prompt_size + max_new_tokens)
   batch = torch.full(
-    (len(prompt_tokens), total_len), tokenizer.pad_id, dtype=torch.long, device=device)
+    (len(prompt_tokens), total_len), pad_id, dtype=torch.long, device=device)
   mask = torch.ones_like(batch, dtype=torch.long, device=device)
   for i, toks in enumerate(prompt_tokens):
     batch[i, :len(toks)] = torch.tensor(toks, dtype=torch.long, device=device)
