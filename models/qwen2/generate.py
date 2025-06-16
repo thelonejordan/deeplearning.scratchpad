@@ -1,6 +1,5 @@
 from __future__ import annotations
 from typing import Optional, Any
-from dataclasses import dataclass
 
 from models.helpers import timeit, Generator
 from models.llama2.generate import generate, CompletionPrediction, ChatPrediction, Dialog
@@ -29,30 +28,19 @@ class Qwen(Transformer, Generator):
     # (File "/workspace/deeplearning.scratchpad/models/llama2/generate.py")
     pad_id = self.tokenizer.encode(self.tokenizer.special_tokens_map['pad_token'])[0]
     eos_id = self.tokenizer.encode(self.tokenizer.special_tokens_map['eos_token'])[0]
-    return QwenGenerator(
-      self, self.tokenizer, self.config.max_seq_len, self.config.max_batch_size, pad_id, eos_id
-    )
+    return self, self.tokenizer, self.config.max_seq_len, self.config.max_batch_size, pad_id, eos_id
 
   def text_completion(self, prompts: list[str], temperature: float=0.6, top_p: float=0.9,
                       max_gen_len: Optional[int]=None, logprobs: bool = False, echo: bool = False):
-    return text_completion(self.G, prompts, temperature, top_p, max_gen_len, logprobs, echo)
+    return text_completion(*self.G, prompts, temperature, top_p, max_gen_len, logprobs, echo)
 
   def chat_completion(self, prompts: list[str], temperature: float=0.6, top_p: float=0.9,
                       max_gen_len: Optional[int]=None, logprobs: bool = False):
-    return chat_completion(self.G, prompts, temperature, top_p, max_gen_len, logprobs)
+    return chat_completion(*self.G, prompts, temperature, top_p, max_gen_len, logprobs)
 
 
-@dataclass
-class QwenGenerator:
-  model: Qwen
-  tokenizer: Any
-  max_seq_len: int
-  max_batch_size: int
-  pad_id: int
-  eos_id: int
-
-
-def text_completion(generator: QwenGenerator, prompts: list[str], temperature: float=0.6, top_p: float=0.9,
+def text_completion(model: Qwen, tokenizer: Any, max_seq_len: int, max_batch_size: int, pad_id: int, eos_id: int,
+                    prompts: list[str], temperature: float=0.6, top_p: float=0.9,
                     max_gen_len: Optional[int]=None, logprobs: bool=False, echo: bool=False) -> list[CompletionPrediction]:
   """
   Perform text completion for a list of prompts using the language generation model.
@@ -73,20 +61,14 @@ def text_completion(generator: QwenGenerator, prompts: list[str], temperature: f
     This method generates text completions for the provided prompts, employing nucleus sampling to introduce controlled randomness.
     If logprobs is True, token log probabilities are computed for each generated token.
   """
-  tokenizer, max_seq_len = generator.tokenizer, generator.max_seq_len
   if max_gen_len is None:
     max_gen_len = max_seq_len - 1
   prompt_tokens = tokenizer(prompts)["input_ids"]
   generation_tokens, generation_logprobs = generate(
-    generator=generator,
-    prompt_tokens=prompt_tokens,
-    max_gen_len=max_gen_len,
-    temperature=temperature,
-    top_p=top_p,
-    logprobs=logprobs,
-    echo=echo,
+    model, max_seq_len, max_batch_size, pad_id, eos_id,
+    prompt_tokens, max_gen_len, temperature, top_p, logprobs, echo,
   )
-  generation_texts = generator.tokenizer.batch_decode(generation_tokens, skip_special_tokens=True, clean_up_tokenization_spaces=True)
+  generation_texts = tokenizer.batch_decode(generation_tokens, skip_special_tokens=True, clean_up_tokenization_spaces=True)
   if logprobs:
     return [
       {
@@ -99,18 +81,19 @@ def text_completion(generator: QwenGenerator, prompts: list[str], temperature: f
   return [{"generation": g} for g in generation_texts]
 
 
-def chat_completion(generator: QwenGenerator, dialogs: list[Dialog], temperature: float=0.6, top_p: float=0.9,
+def chat_completion(model: Qwen, tokenizer: Any, max_seq_len: int, max_batch_size: int, pad_id: int, eos_id: int,
+                    dialogs: list[Dialog], temperature: float=0.6, top_p: float=0.9,
                     max_gen_len: Optional[int]=None, logprobs: bool=False) -> list[ChatPrediction]:
   if max_gen_len is None:
-    max_gen_len = generator.max_seq_len - 1
+    max_gen_len = max_seq_len - 1
   prompt_tokens = []
-  dialogs = generator.tokenizer.apply_chat_template(dialogs, tokenize=False, add_generation_prompt=True)
-  prompt_tokens = generator.tokenizer(dialogs)["input_ids"]
+  dialogs = tokenizer.apply_chat_template(dialogs, tokenize=False, add_generation_prompt=True)
+  prompt_tokens = tokenizer(dialogs)["input_ids"]
   generation_tokens, generation_logprobs = generate(
-    generator, prompt_tokens=prompt_tokens, max_gen_len=max_gen_len,
-    temperature=temperature, top_p=top_p, logprobs=logprobs,
+    model, max_seq_len, max_batch_size, pad_id, eos_id,
+    prompt_tokens, max_gen_len, temperature, top_p, logprobs,
   )
-  generation_texts = generator.tokenizer.batch_decode(generation_tokens, skip_special_tokens=True, clean_up_tokenization_spaces=True)
+  generation_texts = tokenizer.batch_decode(generation_tokens, skip_special_tokens=True, clean_up_tokenization_spaces=True)
   if logprobs:
     return [
       {
@@ -118,7 +101,7 @@ def chat_completion(generator: QwenGenerator, dialogs: list[Dialog], temperature
           "role": "assistant",
           "content": g,
         },
-        "tokens": [generator.tokenizer.decode(x) for x in t],
+        "tokens": [tokenizer.decode(x) for x in t],
         "logprobs": logprobs_i,
       }
       for t, g, logprobs_i in zip(

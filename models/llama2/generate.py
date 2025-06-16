@@ -35,32 +35,23 @@ class Llama(Transformer, Generator):
 
   @property
   def G(self):
-    return LlamaGenerator(
+    return (
       self, self.tokenizer, self.config.max_seq_len, self.config.max_batch_size,
       self.tokenizer.pad_id, self.tokenizer.eos_id
     )
 
   def text_completion(self, prompts: list[str], temperature: float=0.6, top_p: float=0.9,
                       max_gen_len: Optional[int]=None, logprobs: bool = False, echo: bool = False):
-    return text_completion(self.G, prompts, temperature, top_p, max_gen_len, logprobs, echo)
+    return text_completion(*self.G, prompts, temperature, top_p, max_gen_len, logprobs, echo)
 
   def chat_completion(self, prompts: list[str], temperature: float=0.6, top_p: float=0.9,
                       max_gen_len: Optional[int]=None, logprobs: bool = False):
-    return chat_completion(self.G, prompts, temperature, top_p, max_gen_len, logprobs)
-
-
-@dataclass
-class LlamaGenerator:
-  model: Llama
-  tokenizer: Tokenizer
-  max_seq_len: int
-  max_batch_size: int
-  pad_id: int
-  eos_id: int
+    return chat_completion(*self.G, prompts, temperature, top_p, max_gen_len, logprobs)
 
 
 @torch.inference_mode()
-def generate(generator: LlamaGenerator, prompt_tokens: list[list[int]], max_gen_len: int, temperature: float=0.6, top_p: float=0.9,
+def generate(model: Llama, max_seq_len: int, max_batch_size: int, pad_id: int, eos_id: int,
+             prompt_tokens: list[list[int]], max_gen_len: int, temperature: float=0.6, top_p: float=0.9,
              logprobs: bool=False, echo: bool=False) -> tuple[list[list[int]], Optional[list[list[float]]]]:
   """
   Generate text sequences based on provided prompts using the language generation model.
@@ -80,8 +71,6 @@ def generate(generator: LlamaGenerator, prompt_tokens: list[list[int]], max_gen_
     This method uses the provided prompts as a basis for generating text. It employs nucleus sampling to produce text with controlled randomness.
     If logprobs is True, token log probabilities are computed for each generated token.
   """
-  model, pad_id, eos_id = generator.model, generator.pad_id, generator.eos_id
-  max_batch_size, max_seq_len = generator.max_batch_size, generator.max_seq_len
   device = model.device
   bsz = len(prompt_tokens)
   assert bsz <= max_batch_size, (bsz, max_batch_size)
@@ -162,7 +151,8 @@ class ChatPrediction(TypedDict, total=False):
   logprobs: list[float]  # not required
 
 
-def text_completion(generator: LlamaGenerator, prompts: list[str], temperature: float=0.6, top_p: float=0.9,
+def text_completion(model: Llama, tokenizer: Tokenizer, max_seq_len: int, max_batch_size: int, pad_id: int, eos_id: int,
+                    prompts: list[str], temperature: float=0.6, top_p: float=0.9,
                     max_gen_len: Optional[int]=None, logprobs: bool=False, echo: bool=False) -> list[CompletionPrediction]:
   """
   Perform text completion for a list of prompts using the language generation model.
@@ -183,18 +173,12 @@ def text_completion(generator: LlamaGenerator, prompts: list[str], temperature: 
     This method generates text completions for the provided prompts, employing nucleus sampling to introduce controlled randomness.
     If logprobs is True, token log probabilities are computed for each generated token.
   """
-  tokenizer, max_seq_len = generator.tokenizer, generator.max_seq_len
   if max_gen_len is None:
     max_gen_len = max_seq_len - 1
   prompt_tokens = [tokenizer.encode(x, bos=True, eos=False) for x in prompts]
   generation_tokens, generation_logprobs = generate(
-    generator=generator,
-    prompt_tokens=prompt_tokens,
-    max_gen_len=max_gen_len,
-    temperature=temperature,
-    top_p=top_p,
-    logprobs=logprobs,
-    echo=echo,
+    model, max_seq_len, max_batch_size, pad_id, eos_id,
+    prompt_tokens, max_gen_len, temperature, top_p, logprobs, echo,
   )
   if logprobs:
     return [
@@ -208,7 +192,8 @@ def text_completion(generator: LlamaGenerator, prompts: list[str], temperature: 
   return [{"generation": tokenizer.decode(t)} for t in generation_tokens]
 
 
-def chat_completion(generator: LlamaGenerator, dialogs: list[Dialog], temperature: float=0.6, top_p: float=0.9,
+def chat_completion(model: Llama, tokenizer: Tokenizer, max_seq_len: int, max_batch_size: int, pad_id: int, eos_id: int,
+                    dialogs: list[Dialog], temperature: float=0.6, top_p: float=0.9,
                     max_gen_len: Optional[int]=None, logprobs: bool=False) -> list[ChatPrediction]:
   """
   Generate assistant responses for a list of conversational dialogs using the language generation model.
@@ -235,28 +220,28 @@ def chat_completion(generator: LlamaGenerator, dialogs: list[Dialog], temperatur
 
   """
   if max_gen_len is None:
-    max_gen_len = generator.max_seq_len - 1
+    max_gen_len = max_seq_len - 1
   prompt_tokens = []
   unsafe_requests = []
   for dialog in dialogs:
     unsafe_requests.append(
       any([tag in msg["content"] for tag in SPECIAL_TAGS for msg in dialog])
     )
-    dialog_tokens = encode_dialog_prompt(generator.tokenizer, dialog)
+    dialog_tokens = encode_dialog_prompt(tokenizer, dialog)
     prompt_tokens.append(dialog_tokens)
 
   generation_tokens, generation_logprobs = generate(
-    generator, prompt_tokens=prompt_tokens, max_gen_len=max_gen_len,
-    temperature=temperature, top_p=top_p, logprobs=logprobs,
+    model, max_seq_len, max_batch_size, pad_id, eos_id,
+    prompt_tokens, max_gen_len, temperature, top_p, logprobs,
   )
   if logprobs:
     return [
       {
         "generation": {
           "role": "assistant",
-          "content": generator.tokenizer.decode(t) if not unsafe else UNSAFE_ERROR,
+          "content": tokenizer.decode(t) if not unsafe else UNSAFE_ERROR,
         },
-        "tokens": [generator.tokenizer.decode(x) for x in t],
+        "tokens": [tokenizer.decode(x) for x in t],
         "logprobs": logprobs_i,
       }
       for t, logprobs_i, unsafe in zip(generation_tokens, generation_logprobs, unsafe_requests)
@@ -265,7 +250,7 @@ def chat_completion(generator: LlamaGenerator, dialogs: list[Dialog], temperatur
     {
       "generation": {
         "role": "assistant",
-        "content": generator.tokenizer.decode(t) if not unsafe else UNSAFE_ERROR,
+        "content": tokenizer.decode(t) if not unsafe else UNSAFE_ERROR,
       }
     }
     for t, unsafe in zip(generation_tokens, unsafe_requests)

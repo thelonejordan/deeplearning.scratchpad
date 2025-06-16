@@ -38,7 +38,7 @@ def _tokenizer_path(repo_id: str):
 ModelOptions = Literal['1B','3B','8B','70B']
 VersionOptions = Literal['0','1','2']
 
-def huggingface_repo_id(model_desc: str="3B", version: str="2", instruct: bool=False, safetensors: bool=True):
+def huggingface_repo_id(model_desc: str="3B", version: str="2", instruct: bool=False):
   assert model_desc in get_args(ModelOptions), f'invalid model_type: {model_desc}'
   assert version in get_args(VersionOptions), f'invalid version: {version}'
   if model_desc in ('8B', '70B'): assert version in ('0', '1')
@@ -47,10 +47,9 @@ def huggingface_repo_id(model_desc: str="3B", version: str="2", instruct: bool=F
   prefix = 'Meta-'if version == '0' else ''
   return f'meta-llama/{prefix}Llama-3{v}-{model_desc}' + ('-Instruct' if instruct else '')
 
-def build(max_seq_len: int, max_batch_size: int, seed: int=1,
-          model_desc: ModelOptions='8B', version: VersionOptions='0', instruct: bool=False, safetensors: bool=True,
-          force_dtype: Optional[str]=None, model_class: type[Transformer]=Transformer):
-  repo_id = huggingface_repo_id(model_desc, version, instruct, safetensors)
+def build(max_seq_len: int, max_batch_size: int, model_desc: ModelOptions='8B', version: VersionOptions='0', instruct: bool=False,
+          safetensors: bool=True, force_dtype: Optional[str]=None, model_class: type[Transformer]=Transformer):
+  repo_id = huggingface_repo_id(model_desc, version, instruct)
   v = '' if version == '0' else f'.{version}'
   params = CONFIGS[f"3{v}"][model_desc]
   if force_dtype is not None:

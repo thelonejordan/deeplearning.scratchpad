@@ -1,5 +1,4 @@
 from __future__ import annotations
-from dataclasses import dataclass
 from tqdm import trange
 
 import torch
@@ -26,27 +25,16 @@ class Llama(Transformer, Generator):
 
   @property
   def G(self):
-    return LlamaGenerator(self, self.tokenizer, self.config.max_seq_len, self.config.max_batch_size, self.tokenizer.pad_id)
+    return self, self.tokenizer, self.config.max_seq_len, self.config.max_batch_size, self.tokenizer.pad_id
 
   def text_completion(self, prompts: list[str], max_gen_len: int,
                       temperature: float=0.8, top_p: float=0.95) -> list[str]:
-    return text_completion(self.G, prompts, max_gen_len, temperature, top_p)
-
-
-@dataclass
-class LlamaGenerator:
-  model: Llama
-  tokenizer: Tokenizer
-  max_seq_len: int
-  max_batch_size: int
-  pad_id: int
+    return text_completion(*self.G, prompts, max_gen_len, temperature, top_p)
 
 
 @torch.inference_mode()
-def generate(generator: LlamaGenerator, prompt_tokens: list[list[int]],
-             max_gen_len: int, temperature: float=0.8, top_p: float=0.95) -> list[list[int]]:
-  model, pad_id = generator.model, generator.pad_id
-  max_batch_size, max_seq_len = generator.max_batch_size, generator.max_seq_len
+def generate(model: Llama, max_seq_len: int, max_batch_size: int, pad_id: int,
+             prompt_tokens: list[list[int]], max_gen_len: int, temperature: float=0.8, top_p: float=0.95) -> list[list[int]]:
   device = model.device
   bsz = len(prompt_tokens)
   assert bsz <= max_batch_size, (bsz, max_batch_size)
@@ -77,13 +65,12 @@ def generate(generator: LlamaGenerator, prompt_tokens: list[list[int]],
 
 
 @torch.inference_mode()
-def text_completion(generator: LlamaGenerator, prompts: list[str], max_gen_len: int,
-                    temperature: float=0.8, top_p: float=0.95) -> list[str]:
-  tokenizer, max_batch_size = generator.tokenizer, generator.max_batch_size
+def text_completion(model: Llama, tokenizer: Tokenizer, max_seq_len: int, max_batch_size: int, pad_id: int,
+                    prompts: list[str], max_gen_len: int, temperature: float=0.8, top_p: float=0.95) -> list[str]:
   bsz = len(prompts)
   assert bsz <= max_batch_size, (bsz, max_batch_size)
   prompt_tokens = [tokenizer.encode(x, bos=True, eos=False) for x in prompts]
-  tokens = generate(generator, prompt_tokens, max_gen_len, temperature, top_p)
+  tokens = generate(model, max_seq_len, max_batch_size, pad_id, prompt_tokens, max_gen_len, temperature, top_p)
   decoded = []
   for i, t in enumerate(tokens):
     t = t[: len(prompt_tokens[i]) + max_gen_len]  # cut to max gen len

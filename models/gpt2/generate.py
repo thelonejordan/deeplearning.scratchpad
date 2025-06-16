@@ -1,5 +1,4 @@
 from __future__ import annotations
-from dataclasses import dataclass
 
 import torch
 from torch import Tensor
@@ -26,25 +25,16 @@ class GPT2(Transformer, Generator):
     return generator
 
   @property
-  def G(self): return GPT2Generator(self, self.tokenizer, self.config.n_ctx, self.tokenizer.pad_id)
+  def G(self): return self, self.tokenizer, self.config.n_ctx, self.tokenizer.pad_id
 
   def text_completion(self, prompts: list[str], max_new_tokens: int,
                       temperature: float=1.0, top_k: int=0, top_p: float=1.0):
-    return text_completion(self.G, prompts, max_new_tokens, temperature, top_k, top_p)
-
-
-@dataclass
-class GPT2Generator:
-  model: GPT2
-  tokenizer: Tokenizer
-  context_len: int
-  pad_id: int
+    return text_completion(*self.G, prompts, max_new_tokens, temperature, top_k, top_p)
 
 
 @torch.inference_mode()
-def generate(generator: GPT2Generator, prompt_tokens: list[list[int]], max_new_tokens: int,
-             temperature: float=1.0, top_k: int=0, top_p: float=1.0):
-  model, n_ctx, pad_id = generator.model, generator.context_len, generator.pad_id
+def generate(model: GPT2, n_ctx: int, pad_id: int,
+             prompt_tokens: list[list[int]], max_new_tokens: int, temperature: float=1.0, top_k: int=0, top_p: float=1.0):
   device = model.device
   min_prompt_size = min([len(t) for t in prompt_tokens])
   max_prompt_size = max([len(t) for t in prompt_tokens])
@@ -78,11 +68,10 @@ def generate(generator: GPT2Generator, prompt_tokens: list[list[int]], max_new_t
 
 
 @torch.inference_mode()
-def text_completion(generator: GPT2Generator, prompts: list[str], max_new_tokens: int,
-                    temperature: float=1.0, top_k: int=0, top_p: float=1.0):
-  tokenizer = generator.tokenizer
+def text_completion(model: GPT2, tokenizer: Tokenizer, n_ctx: int, pad_id: int,
+                    prompts: list[str], max_new_tokens: int, temperature: float=1.0, top_k: int=0, top_p: float=1.0):
   prompt_tokens = tokenizer.encode_batch(prompts)
-  completions = generate(generator, prompt_tokens, max_new_tokens, temperature, top_k, top_p)
+  completions = generate(model, n_ctx, pad_id, prompt_tokens, max_new_tokens, temperature, top_k, top_p)
   return tokenizer.decode_batch(completions)
 
 
