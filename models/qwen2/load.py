@@ -8,7 +8,7 @@ from models.qwen2.config import QwenConfig, CONFIGS
 from models.qwen2.transformer import Transformer
 from models.llama2.load import _safetensors_load
 
-def build(max_seq_len: int, max_batch_size: int, repo_id: str, force_dtype: Optional[str]=None):
+def build(max_seq_len: int, max_batch_size: int, repo_id: str, force_dtype: Optional[str]=None, model_class: type[Transformer]=Transformer):
   assert repo_id in CONFIGS.keys(), f"invalid repo id, must be one of {tuple(CONFIGS.keys())}, got {repo_id}"
   tokenizer = AutoTokenizer.from_pretrained(repo_id)
   params = CONFIGS.get(repo_id, {})
@@ -25,12 +25,12 @@ def build(max_seq_len: int, max_batch_size: int, repo_id: str, force_dtype: Opti
   default_dtype = torch.get_default_dtype()
   torch.set_default_dtype(getattr(torch, config.torch_dtype))
   with torch.device("meta"):
-    model = Transformer(**asdict(config))
+    model = model_class(**asdict(config), **{"tokenizer": tokenizer, "config": config})
   _model = model
   if config.tie_word_embeddings:
     _model = model.model
     fixup = lambda k: k[len('model.'):] if k.startswith('model.') else k
-    state_dict = {fixup(k): v for k, v in state_dict.items()} # if k != "lm_head.weight"}
+    state_dict = {fixup(k): v for k, v in state_dict.items()}
   state_dict = {k:v.to(dtype=getattr(torch, config.torch_dtype)) for k,v in state_dict.items()}
   _model.load_state_dict(state_dict, assign=True, strict=True)
   if config.tie_word_embeddings:

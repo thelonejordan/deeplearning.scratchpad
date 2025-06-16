@@ -1,3 +1,4 @@
+from __future__ import annotations
 from tqdm import trange
 
 import torch
@@ -9,36 +10,42 @@ from models.llama.tokenizer import Tokenizer
 from models.llama.config import LlamaConfig
 from models.llama.load import build, ModelOptions
 
-class Llama(Generator):
-  def __init__(self, model: Transformer, tokenizer: Tokenizer, config: LlamaConfig):
-    self.model, self.tokenizer, self.config = model, tokenizer, config
+class Llama(Transformer, Generator):
+  def __init__(self, *args, **kwargs):
+    assert "config" in kwargs and "tokenizer" in kwargs
+    self.config: LlamaConfig = kwargs.pop("config")
+    self.tokenizer: Tokenizer = kwargs.pop("tokenizer")
+    super().__init__(*args, **kwargs)
 
   @staticmethod
   @timeit(desc="Load time", ms=False)
-  def from_pretrained(max_seq_len: int=512, max_batch_size: int=8, model_desc: ModelOptions='7B'):
-    model, tokenizer, config = build(max_seq_len, max_batch_size, model_desc, safetensors=bool(SAFETENSORS))
-    return Llama(model, tokenizer, config)
+  def from_pretrained(max_seq_len: int=512, max_batch_size: int=8, model_desc: ModelOptions='7B') -> Llama:
+    generator, _, __ = build(max_seq_len, max_batch_size, model_desc, safetensors=bool(SAFETENSORS), model_class=Llama)
+    return generator
+
+  @property
+  def args(self):
+    return self, self.tokenizer, self.config.max_seq_len, self.config.max_batch_size, self.tokenizer.pad_id
 
   def text_completion(self, prompts: list[str], max_gen_len: int,
                       temperature: float=0.8, top_p: float=0.95) -> list[str]:
-    return text_completion(self, prompts, max_gen_len, temperature, top_p)
+    return text_completion(*self.args, prompts, max_gen_len, temperature, top_p)
 
 
 @torch.inference_mode()
-def generate(generator: Llama, prompt_tokens: list[list[int]],
-             max_gen_len: int, temperature: float=0.8, top_p: float=0.95) -> list[list[int]]:
-  model, tokenizer, device = generator.model, generator.tokenizer, generator.device
-  max_batch_size, max_seq_len = generator.config.max_batch_size, generator.config.max_seq_len
+def generate(model: Llama, max_seq_len: int, max_batch_size: int, pad_id: int,
+             prompt_tokens: list[list[int]], max_gen_len: int, temperature: float=0.8, top_p: float=0.95) -> list[list[int]]:
+  device = model.device
   bsz = len(prompt_tokens)
   assert bsz <= max_batch_size, (bsz, max_batch_size)
   min_prompt_size = min([len(t) for t in prompt_tokens])
   max_prompt_size = max([len(t) for t in prompt_tokens])
   total_len = min(max_seq_len, max_gen_len + max_prompt_size)
   tokens = torch.full(
-    (len(prompt_tokens), total_len), tokenizer.pad_id, device=device, dtype=torch.long)
+    (len(prompt_tokens), total_len), pad_id, device=device, dtype=torch.long)
   for k, t in enumerate(prompt_tokens):
     tokens[k, : len(t)] = torch.tensor(t, device=device, dtype=torch.long)
-  input_text_mask = tokens != tokenizer.pad_id
+  input_text_mask = tokens != pad_id
   prev_pos = 0
   model.eval()
   for cur_pos in trange(min_prompt_size, total_len, desc='Generating tokens'):
@@ -58,13 +65,12 @@ def generate(generator: Llama, prompt_tokens: list[list[int]],
 
 
 @torch.inference_mode()
-def text_completion(generator: Llama, prompts: list[str], max_gen_len: int,
-                    temperature: float=0.8, top_p: float=0.95) -> list[str]:
-  tokenizer, max_batch_size = generator.tokenizer, generator.config.max_batch_size
+def text_completion(model: Llama, tokenizer: Tokenizer, max_seq_len: int, max_batch_size: int, pad_id: int,
+                    prompts: list[str], max_gen_len: int, temperature: float=0.8, top_p: float=0.95) -> list[str]:
   bsz = len(prompts)
   assert bsz <= max_batch_size, (bsz, max_batch_size)
   prompt_tokens = [tokenizer.encode(x, bos=True, eos=False) for x in prompts]
-  tokens = generate(generator, prompt_tokens, max_gen_len, temperature, top_p)
+  tokens = generate(model, max_seq_len, max_batch_size, pad_id, prompt_tokens, max_gen_len, temperature, top_p)
   decoded = []
   for i, t in enumerate(tokens):
     t = t[: len(prompt_tokens[i]) + max_gen_len]  # cut to max gen len

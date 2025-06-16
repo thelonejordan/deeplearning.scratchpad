@@ -60,7 +60,8 @@ def convert_from_huggingface(state_dict: dict[str, Tensor], dim: int, n_heads: i
 
 ModelOptions = Literal['7B','13B','33B','70B']
 
-def build(max_seq_len: int, max_batch_size: int, model_desc: ModelOptions='7B', safetensors: bool=True):
+def build(max_seq_len: int, max_batch_size: int, model_desc: ModelOptions='7B', safetensors: bool=True,
+          model_class: type[Transformer]=Transformer):
   assert model_desc in get_args(ModelOptions), f'invalid model_desc: {model_desc}'
   model_desc = {'33B': '30B','70B': '65B'}.get(model_desc, model_desc)
   repo_id = f'huggyllama/llama-{model_desc.lower()}'
@@ -77,7 +78,7 @@ def build(max_seq_len: int, max_batch_size: int, model_desc: ModelOptions='7B', 
   default_dtype = torch.get_default_dtype()
   torch.set_default_dtype(getattr(torch, config.torch_dtype))
   with torch.device("meta"):
-    model = Transformer(**asdict(config))
+    model = model_class(**asdict(config), **{'tokenizer': tokenizer, 'config': config})
   model.load_state_dict(state_dict, assign=True, strict=True)
   torch.set_default_dtype(default_dtype)
   return model, tokenizer, config
