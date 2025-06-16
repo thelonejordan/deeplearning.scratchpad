@@ -53,7 +53,7 @@ def self_run(prompts: list[str], model_desc: str="7B"):
   generator = Llama.from_pretrained(
     max_seq_len=max_seq_len, max_batch_size=max_batch_size, model_desc=model_desc, force_dtype="float16"
   ).to(DEVICE)
-  model, tokenizer, max_seq_len, max_batch_size, pad_id, eos_id = generator.G
+  model, tokenizer, max_seq_len, max_batch_size, pad_id, eos_id = generator.args
   inputs = [tokenizer.encode(s, bos=True, eos=False) for s in prompts]
   outputs, _ = generate(
     model, max_seq_len, max_batch_size, pad_id, eos_id, inputs, max_gen_len=max_seq_len, temperature=0.0, echo=True)

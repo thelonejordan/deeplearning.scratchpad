@@ -34,7 +34,7 @@ class Llama(Transformer, Generator):
     return generator
 
   @property
-  def G(self):
+  def args(self):
     return (
       self, self.tokenizer, self.config.max_seq_len, self.config.max_batch_size,
       self.tokenizer.pad_id, self.tokenizer.stop_tokens,
@@ -42,11 +42,11 @@ class Llama(Transformer, Generator):
 
   def text_completion(self, prompts: list[str], temperature: float=0.6, top_p: float=0.9,
                       max_gen_len: Optional[int]=None, logprobs: bool=False, echo: bool=False):
-    return text_completion(*self.G, prompts, temperature, top_p, max_gen_len, logprobs, echo)
+    return text_completion(*self.args, prompts, temperature, top_p, max_gen_len, logprobs, echo)
 
   def chat_completion(self, dialogs: list[Dialog], temperature: float=0.6, top_p: float=0.9,
                       max_gen_len: Optional[int]=None, logprobs: bool=False):
-    return chat_completion(*self.G, dialogs, temperature, top_p, max_gen_len, logprobs)
+    return chat_completion(*self.args, dialogs, temperature, top_p, max_gen_len, logprobs)
 
 
 @torch.inference_mode()

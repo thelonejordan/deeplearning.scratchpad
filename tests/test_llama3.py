@@ -46,7 +46,7 @@ def self_run(prompts: list[str], model_desc: str="3B", version: str="2"):
   generator = Llama.from_pretrained(
     max_seq_len=max_seq_len, max_batch_size=max_batch_size, model_desc=model_desc, version=version, force_dtype="float16"
   ).to(DEVICE)
-  model, tokenizer, max_seq_len, max_batch_size, pad_id, stop_tokens = generator.G
+  model, tokenizer, max_seq_len, max_batch_size, pad_id, stop_tokens = generator.args
   pad_id = tokenizer.eos_id
   inputs = [tokenizer.encode(s, bos=True, eos=False) for s in prompts]
   outputs, _ = generate(

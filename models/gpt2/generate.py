@@ -25,11 +25,11 @@ class GPT2(Transformer, Generator):
     return generator
 
   @property
-  def G(self): return self, self.tokenizer, self.config.n_ctx, self.tokenizer.pad_id
+  def args(self): return self, self.tokenizer, self.config.n_ctx, self.tokenizer.pad_id
 
   def text_completion(self, prompts: list[str], max_new_tokens: int,
                       temperature: float=1.0, top_k: int=0, top_p: float=1.0):
-    return text_completion(*self.G, prompts, max_new_tokens, temperature, top_k, top_p)
+    return text_completion(*self.args, prompts, max_new_tokens, temperature, top_k, top_p)
 
 
 @torch.inference_mode()

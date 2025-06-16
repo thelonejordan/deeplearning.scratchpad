@@ -24,12 +24,12 @@ class Llama(Transformer, Generator):
     return generator
 
   @property
-  def G(self):
+  def args(self):
     return self, self.tokenizer, self.config.max_seq_len, self.config.max_batch_size, self.tokenizer.pad_id
 
   def text_completion(self, prompts: list[str], max_gen_len: int,
                       temperature: float=0.8, top_p: float=0.95) -> list[str]:
-    return text_completion(*self.G, prompts, max_gen_len, temperature, top_p)
+    return text_completion(*self.args, prompts, max_gen_len, temperature, top_p)
 
 
 @torch.inference_mode()
