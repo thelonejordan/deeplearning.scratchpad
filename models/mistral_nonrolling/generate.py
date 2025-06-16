@@ -23,9 +23,13 @@ class Mistral(Transformer, Generator):
     generator, _, __ = build(max_seq_len, max_batch_size, version=version, safetensors=bool(SAFETENSORS), model_class=Mistral)
     return generator.to(device)
 
+  @property
+  def args(self):
+    return self, self.tokenizer, self.tokenizer.pad_id
+
   @torch.no_grad()
   def generate(self, prompts: list[str], max_tokens: int):
-    return generate(self, self.tokenizer, self.tokenizer.pad_id, prompts, max_tokens)
+    return generate(*self.args, prompts, max_tokens)
 
 
 @torch.no_grad()
