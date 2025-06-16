@@ -47,7 +47,8 @@ def _tokenizer_path(repo_id_or_folder: str, safetensors: bool = True):
 
 VersionOptions = Literal['1', '3']
 
-def build(max_seq_len: int, max_batch_size: int, version: VersionOptions='1', safetensors: bool=True):
+def build(max_seq_len: int, max_batch_size: int, version: VersionOptions='1', safetensors: bool=True,
+          model_class: type[Transformer]=Transformer):
   model_desc = '7B'
   assert version in get_args(VersionOptions), f'invalid version: {version}'
   model_desc_full = f'Mistral-{model_desc}-v0.{version}'
@@ -62,7 +63,7 @@ def build(max_seq_len: int, max_batch_size: int, version: VersionOptions='1', sa
   default_dtype = torch.get_default_dtype()
   torch.set_default_dtype(getattr(torch, config.torch_dtype))
   with torch.device("meta"):
-    model = Transformer(**asdict(config))
+    model = model_class(**asdict(config), **{"tokenizer": tokenizer, "config": config})
   model.load_state_dict(state_dict, assign=True, strict=True)
   torch.set_default_dtype(default_dtype)
   return model, tokenizer, config

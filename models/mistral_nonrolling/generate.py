@@ -1,3 +1,4 @@
+from __future__ import annotations
 from tqdm import trange
 
 import torch
@@ -10,32 +11,33 @@ from models.mistral_nonrolling.transformer import Transformer
 from models.mistral_nonrolling.load import build
 
 
-class Mistral(Generator):
-  def __init__(self, model: Transformer, tokenizer: Tokenizer, config: MistralConfig):
-    self.model: Transformer = model
-    self.tokenizer = tokenizer
-    self.config = config
+class Mistral(Transformer, Generator):
+  def __init__(self, *args, **kwargs):
+    self.tokenizer: Tokenizer = kwargs.pop("tokenizer")
+    self.config: MistralConfig = kwargs.pop("config")
+    super().__init__(*args, **kwargs)
 
   @staticmethod
   @timeit(desc="Load time", ms=False)
-  def from_pretrained(version: str, max_seq_len: int, max_batch_size: int, device: torch.device):
-    model, tokenizer, config = build(max_seq_len, max_batch_size, version=version, safetensors=bool(SAFETENSORS))
-    return Mistral(model, tokenizer, config).to(device)
+  def from_pretrained(version: str, max_seq_len: int, max_batch_size: int, device: torch.device) -> Mistral:
+    generator, _, __ = build(max_seq_len, max_batch_size, version=version, safetensors=bool(SAFETENSORS), model_class=Mistral)
+    return generator.to(device)
 
   @torch.no_grad()
   def generate(self, prompts: list[str], max_tokens: int):
-    return generate(self.model, self.tokenizer, self.device, prompts, max_tokens)
+    return generate(self, self.tokenizer, self.tokenizer.pad_id, prompts, max_tokens)
 
 
 @torch.no_grad()
-def generate(model: Transformer, tokenizer: Tokenizer, device: torch.device, prompts: list[str], max_tokens: int):
+def generate(model: Mistral, tokenizer: Tokenizer, pad_id: int, prompts: list[str], max_tokens: int):
+  device = model.device
   encoded_prompts = [tokenizer.encode(prompt, bos=True, eos=False) for prompt in prompts]
   prompt_lens = [len(x) for x in encoded_prompts]
   min_prompt_len, max_prompt_len = min(prompt_lens), max(prompt_lens)
-  input_tokens = torch.full((len(prompts), max_prompt_len), tokenizer.pad_id, dtype=torch.long, device=device)
+  input_tokens = torch.full((len(prompts), max_prompt_len), pad_id, dtype=torch.long, device=device)
   for i, encoded in enumerate(encoded_prompts):
     input_tokens[i, : len(encoded)] = torch.tensor(encoded).to(input_tokens)
-  input_mask = input_tokens != tokenizer.pad_id
+  input_mask = input_tokens != pad_id
   # pre-fill
   positions = torch.arange(0, min_prompt_len).to(device)
   logits = model.forward(input_tokens[:, :min_prompt_len], positions)
