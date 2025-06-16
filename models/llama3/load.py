@@ -90,4 +90,4 @@ def build(max_seq_len: int, max_batch_size: int, seed: int=1,
   _model.load_state_dict(state_dict, assign=True, strict=True)
   torch.set_default_dtype(default_dtype)
   if tie_word_embeddings: model = model.apply_weight_sharing()
-  return model
+  return model, tokenizer, config

@@ -21,8 +21,8 @@ class GPT2(Transformer, Generator):
 
   @staticmethod
   @timeit(desc="Load time", ms=False)
-  def from_pretrained(model_desc: ModelOptions='gpt2'):
-    generator: GPT2 = build(model_desc, safetensors=bool(SAFETENSORS), model_class=GPT2)
+  def from_pretrained(model_desc: ModelOptions='gpt2') -> GPT2:
+    generator, _, __= build(model_desc, safetensors=bool(SAFETENSORS), model_class=GPT2)
     return generator
 
   @property

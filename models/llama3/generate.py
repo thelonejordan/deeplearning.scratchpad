@@ -29,7 +29,7 @@ class Llama(Transformer, Generator):
                       model_desc: ModelOptions='8B', version: VersionOptions='0',instruct: bool=False,
                       force_dtype: Optional[str]=None) -> Llama:
 
-    generator: Llama = build(
+    generator, _, __ = build(
       max_seq_len, max_batch_size,
       model_desc=model_desc, version=version, instruct=instruct,
       safetensors=bool(SAFETENSORS), force_dtype=force_dtype, model_class=Llama,

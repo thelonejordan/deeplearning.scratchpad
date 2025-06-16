@@ -81,4 +81,4 @@ def build(max_seq_len: int, max_batch_size: int, model_desc: ModelOptions='7B', 
     model = model_class(**asdict(config), **{'tokenizer': tokenizer, 'config': config})
   model.load_state_dict(state_dict, assign=True, strict=True)
   torch.set_default_dtype(default_dtype)
-  return model
+  return model, tokenizer, config

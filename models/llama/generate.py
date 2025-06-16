@@ -20,8 +20,8 @@ class Llama(Transformer, Generator):
 
   @staticmethod
   @timeit(desc="Load time", ms=False)
-  def from_pretrained(max_seq_len: int=512, max_batch_size: int=8, model_desc: ModelOptions='7B'):
-    generator: Llama = build(max_seq_len, max_batch_size, model_desc, safetensors=bool(SAFETENSORS), model_class=Llama)
+  def from_pretrained(max_seq_len: int=512, max_batch_size: int=8, model_desc: ModelOptions='7B') -> Llama:
+    generator, _, __ = build(max_seq_len, max_batch_size, model_desc, safetensors=bool(SAFETENSORS), model_class=Llama)
     return generator
 
   @property
