@@ -1,0 +1,136 @@
+# This workflow will install Python dependencies, run tests and lint with a single version of Python
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
+
+name: Run tests
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+permissions:
+  contents: read
+
+jobs:
+  testgpt2:
+    name: Test GPT2 (small, medium) on CPU
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest "huggingface_hub[cli,xf_xet]"
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip freeze
+
+      - name: Display environment
+        run: |
+          huggingface-cli env
+          python env.py
+
+      - name: Test with pytest
+        run: |
+          SDPA=1 pytest tests/test_gpt2.py
+          SDPA=0 pytest tests/test_gpt2.py
+
+  testllama3:
+    name: Test Llama3.2 (1B) on CPU
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest "huggingface_hub[cli,xf_xet]"
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip freeze
+
+      - name: Login to HuggingFace
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN_READONLY }}
+        run: |
+          huggingface-cli login --token "$HF_TOKEN"
+
+      - name: Display environment
+        run: |
+          huggingface-cli env
+          python env.py
+
+      - name: Test with pytest
+        run: |
+          SDPA=1 pytest -k "test_llama_3_dot_2_1B" tests/test_llama3.py
+          SDPA=0 pytest -k "test_llama_3_dot_2_1B" tests/test_llama3.py
+
+  testqwen2:
+    name: Test Qwen2.5 (0.5B) on CPU
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest "huggingface_hub[cli,xf_xet]"
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip freeze
+
+      - name: Login to HuggingFace
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN_READONLY }}
+        run: |
+          huggingface-cli login --token "$HF_TOKEN"
+
+      - name: Display environment
+        run: |
+          huggingface-cli env
+          python env.py
+
+      - name: Test with pytest
+        run: |
+          SDPA=1 pytest -k "inputs" tests/test_qwen2.py
+          SDPA=0 pytest -k "inputs" tests/test_qwen2.py
+
+  testvisionmodels:
+    name: Test vision models
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip freeze
+
+      - name: Display environment
+        run: |
+          python env.py
+
+      - name: Test with pytest
+        run: |
+          pytest tests/test_alexnet.py tests/test_resnet.py
