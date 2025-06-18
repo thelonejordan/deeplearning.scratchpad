@@ -59,17 +59,17 @@ class TestGPT2Greedy(unittest.TestCase):
     self.assertEqual(outputs_target, outputs, "output tokens do not match")
     self.assertEqual(completion_target, completion, "completion does not match")
 
-  def test_gpt2_huggingface(self):
+  def test_gpt2_small_huggingface(self):
     inputs, outputs, completion = huggingface_run(self.prompts, model_desc="gpt2")
     self._check_output(inputs, outputs, completion, **self.target["gpt2"])
 
-  def test_gpt2_self_safetensors(self):
+  def test_gpt2_small_self_safetensors(self):
     with Context(SAFETENSORS=1):
       inputs, outputs, completion = self_run(self.prompts, model_desc="gpt2")
     self._check_output(inputs, outputs, completion, **self.target["gpt2"])
 
   @unittest.skipIf(bool(TESTING_MINIMAL), "testing minimal")
-  def test_gpt2_self_no_safetensors(self):
+  def test_gpt2_small_self_no_safetensors(self):
     with Context(SAFETENSORS=0):
       inputs, outputs, completion = self_run(self.prompts, model_desc="gpt2")
     self._check_output(inputs, outputs, completion, **self.target["gpt2"])
