@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   testgpt2:
-    name: Test GPT2 (small, medium) CPU
+    name: Test GPT2 (small, medium) on CPU
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -38,10 +38,11 @@ jobs:
 
       - name: Test with pytest
         run: |
-          pytest tests/test_gpt2.py
+          SDPA=1 pytest tests/test_gpt2.py
+          SDPA=0 pytest tests/test_gpt2.py
 
   testllama3:
-    name: Test Llama3.2 (1B) CPU
+    name: Test Llama3.2 (1B) on CPU
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -71,10 +72,11 @@ jobs:
 
       - name: Test with pytest
         run: |
-          pytest -k "test_llama_3_dot_2_1B" tests/test_llama3.py
+          SDPA=1 pytest -k "test_llama_3_dot_2_1B" tests/test_llama3.py
+          SDPA=0 pytest -k "test_llama_3_dot_2_1B" tests/test_llama3.py
 
   testqwen2:
-    name: Test Qwen2.5 (0.5B) CPU
+    name: Test Qwen2.5 (0.5B) on CPU
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -104,4 +106,5 @@ jobs:
 
       - name: Test with pytest
         run: |
-          pytest -k "inputs" tests/test_qwen2.py
+          SDPA=1 pytest -k "inputs" tests/test_qwen2.py
+          SDPA=0 pytest -k "inputs" tests/test_qwen2.py
