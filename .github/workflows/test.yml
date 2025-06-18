@@ -104,4 +104,4 @@ jobs:
 
       - name: Test with pytest
         run: |
-          pytest -k "test_qwen2_5_smallest" tests/test_qwen2.py
+          pytest -k "inputs" tests/test_qwen2.py
