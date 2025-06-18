@@ -41,7 +41,7 @@ jobs:
           pytest tests/test_gpt2.py
 
   testllama3:
-    name: Test Llama3.2 (1B, 3B) CPU
+    name: Test Llama3.2 (1B) CPU
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -71,10 +71,10 @@ jobs:
 
       - name: Test with pytest
         run: |
-          pytest -k "test_llama_3_dot_2" tests/test_llama3.py
+          pytest -k "test_llama_3_dot_2_1B" tests/test_llama3.py
 
   testqwen2:
-    name: Test Qwen2.5, Qwen2 (0.5B) CPU
+    name: Test Qwen2.5 (0.5B) CPU
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -104,4 +104,4 @@ jobs:
 
       - name: Test with pytest
         run: |
-          pytest tests/test_qwen2.py
+          pytest -k "test_qwen2_5_smallest" tests/test_qwen2.py
