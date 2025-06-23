@@ -8,4 +8,4 @@ blobfile
 requests
 # notebook
 # ipywidgets
-# mypy
+# ruff
