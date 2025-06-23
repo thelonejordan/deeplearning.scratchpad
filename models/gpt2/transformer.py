@@ -1,4 +1,3 @@
-
 import torch
 from torch import nn, Tensor
 import torch.nn.functional as F
@@ -34,12 +33,14 @@ class Block(nn.Module):
 class Transformer(nn.Module):
   def __init__(self, n_embd: int, n_head: int, n_ctx: int, norm_eps: float, vocab_size: int, n_layer: int, **_):
     super().__init__()
-    self.transformer = nn.ModuleDict(dict(
-      wte = nn.Embedding(vocab_size, n_embd),
-      wpe = nn.Embedding(n_ctx, n_embd),
-      h = nn.ModuleList([Block(n_embd, n_head, n_ctx, norm_eps) for _ in range(n_layer)]),
-      ln_f = nn.LayerNorm(n_embd, eps=norm_eps),
-    ))
+    self.transformer = nn.ModuleDict(
+      dict(
+        wte=nn.Embedding(vocab_size, n_embd),
+        wpe=nn.Embedding(n_ctx, n_embd),
+        h=nn.ModuleList([Block(n_embd, n_head, n_ctx, norm_eps) for _ in range(n_layer)]),
+        ln_f=nn.LayerNorm(n_embd, eps=norm_eps),
+      )
+    )
     self.lm_head = nn.Linear(n_embd, vocab_size, bias=False)
     self.apply_weight_sharing()
     print("number of parameters: %.2fM" % (self.get_num_params()/1e6,))
@@ -51,7 +52,7 @@ class Transformer(nn.Module):
     x = tok_emb + pos_emb  # (B, T, C)
     for block in self.transformer.h: x = block(x)  # (B, T, C)
     x = self.transformer.ln_f(x)  # (B, T, C)
-    logits = self.lm_head(x) if self.training else self.lm_head(x[:,[-1], :])
+    logits = self.lm_head(x) if self.training else self.lm_head(x[:, [-1], :])
     return logits
 
   def apply_weight_sharing(self):

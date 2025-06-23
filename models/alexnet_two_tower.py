@@ -145,6 +145,7 @@ def train(X_train: Tensor, Y_train: Tensor, num_classes: int, config: TrainConfi
 
 if __name__ == "__main__":
   from helpers import set_device, set_seed
+
   device = set_device()
   set_seed(device)
 

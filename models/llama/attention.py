@@ -55,7 +55,7 @@ class Attention(nn.Module):
     keys = self.cache_k[:bsz, : start_pos + seqlen]
     values = self.cache_v[:bsz, : start_pos + seqlen]
     xq, keys, values = xq.transpose(1, 2), keys.transpose(1, 2), values.transpose(1, 2)
-    output = self._attn_fn(xq, keys, values, mask, 1.0/math.sqrt(self.head_dim))
+    output = self._attn_fn(xq, keys, values, mask, 1.0 / math.sqrt(self.head_dim))
 
     output = output.transpose(1, 2).contiguous().view(bsz, seqlen, -1)
     output = self.o_proj(output)

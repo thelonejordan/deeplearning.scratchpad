@@ -121,6 +121,7 @@ if __name__ == "__main__":
   import torchvision
 
   from helpers import set_device, set_seed
+
   device = set_device()
   set_seed(device)
 
