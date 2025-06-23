@@ -63,7 +63,8 @@ def build(max_seq_len: int, max_batch_size: int, model_desc: ModelOptions='8B', 
       'tok_embeddings.weight': 'model.embed_tokens.weight',
       **{f'layers.{l}.attention.w{var}.weight': f'model.layers.{l}.self_attn.{var}_proj.weight' for var in "qkvo" for l in range(config.n_layers)},
       **{f'layers.{l}.attention_norm.weight': f'model.layers.{l}.input_layernorm.weight' for l in range(config.n_layers)},
-      **{f"layers.{l}.feed_forward.w{x}.weight": f"model.layers.{l}.mlp.{y}_proj.weight" for x, y in {"1": "gate", "2": "down", "3": "up"}.items() for l in range(config.n_layers)},
+      **{f"layers.{l}.feed_forward.w{x}.weight": f"model.layers.{l}.mlp.{y}_proj.weight" for x, y in {"1": "gate", "2": "down", "3": "up"}.items() \
+          for l in range(config.n_layers)},
       **{f"layers.{l}.ffn_norm.weight": f"model.layers.{l}.post_attention_layernorm.weight" for l in range(config.n_layers)},
       "output.weight": "lm_head.weight",
       "norm.weight": "model.norm.weight",
@@ -84,7 +85,8 @@ def build(max_seq_len: int, max_batch_size: int, model_desc: ModelOptions='8B', 
   _model = model
   if tie_word_embeddings:
     _model = model.model
-    fixup = lambda k: k[len('model.'):] if k.startswith('model.') else k
+    def fixup(k):
+      return k[len('model.'):] if k.startswith('model.') else k
     state_dict = {fixup(k): v for k, v in state_dict.items() if k != "lm_head.weight"}
   _model.load_state_dict(state_dict, assign=True, strict=True)
   torch.set_default_dtype(default_dtype)
