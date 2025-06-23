@@ -23,9 +23,10 @@ def _safetensors_load(repo_id: str, transposed: set[str]=set(), skip: set[str]=s
 def _torch_load(repo_id: str, transposed: set[str]=set(), skip: set[str]=set()):
   ckpt_dir = snapshot_download(repo_id, allow_patterns="pytorch_model*.bin")
   checkpoints = sorted(Path(ckpt_dir).glob("pytorch_model*.bin"))
-  state_dict, filtered_state_dict  = {}, {}
+  state_dict, filtered_state_dict = {}, {}
   for ckpt in checkpoints:
-    # RuntimeError: mmap can only be used with files saved with `torch.save(_use_new_zipfile_serialization=True), please torch.save your checkpoint with this option in order to use mmap.
+    # RuntimeError: mmap can only be used with files saved with `torch.save(_use_new_zipfile_serialization=True),
+    # please torch.save your checkpoint with this option in order to use mmap.
     state_dict.update(torch.load(str(ckpt), map_location='cpu', weights_only=True))
   for k, v in state_dict.items():
     if any(k.endswith(w) for w in skip): continue

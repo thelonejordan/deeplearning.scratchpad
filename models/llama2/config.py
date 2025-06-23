@@ -53,7 +53,7 @@ class LlamaConfig:
     return LlamaConfig(max_seq_len=max_seq_len, max_batch_size=max_batch_size, **params)
 
 CONFIGS = {
-  '7B' : dict(dim=4096, n_heads=32, n_layers=32),
+  '7B': dict(dim=4096, n_heads=32, n_layers=32),
   '13B': dict(dim=5120, n_heads=40, n_layers=40),
   '70B': dict(dim=8192, n_heads=64, n_layers=80, n_kv_heads=8, multiple_of=4096, ffn_dim_multiplier=1.3),
 }

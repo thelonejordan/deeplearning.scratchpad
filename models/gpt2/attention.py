@@ -32,13 +32,13 @@ class CausalSelfAttention(nn.Module):
       self.bias = torch.tril(torch.ones(1, 1, n_ctx, n_ctx))
 
   def forward(self, x: Tensor):
-    B, T, C= x.size()
+    B, T, C = x.size()
     qkv = self.c_attn(x)  # (B, T, 3C)
     q, k, v = qkv.split(self.n_embd, dim=-1)  # (B, T, C)
     q = q.view(B, T, self.n_head, self.head_size).transpose(1, 2)  # (B, H, T, C')
     k = k.view(B, T, self.n_head, self.head_size).transpose(1, 2)  # (B, H, T, C')
     v = v.view(B, T, self.n_head, self.head_size).transpose(1, 2)  # (B, H, T, C')
-    mask = self.bias[:,:,:T,:T].to(q.device)
+    mask = self.bias[:, :, :T, :T].to(q.device)
     y = self._attn_fn(q, k, v, mask, 1.0/math.sqrt(self.head_size))  # (B, H, T, C')
     y = y.transpose(1, 2).contiguous().view(B, T, C)
     y = self.c_proj(y)

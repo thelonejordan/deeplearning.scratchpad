@@ -65,7 +65,8 @@ def generate(model: Llama, max_seq_len: int, max_batch_size: int, pad_id: int, s
     echo (bool, optional): Flag indicating whether to include prompt tokens in the generated output. Defaults to False.
 
   Returns:
-    tuple[list[list[int]], Optional[list[list[float]]]]: A tuple containing generated token sequences and, if logprobs is True, corresponding token log probabilities.
+    tuple[list[list[int]], Optional[list[list[float]]]]: A tuple containing generated token sequences and, if logprobs is True, corresponding token
+    log probabilities.
 
   Note:
     This method uses the provided prompts as a basis for generating text. It employs nucleus sampling to produce text with controlled randomness.

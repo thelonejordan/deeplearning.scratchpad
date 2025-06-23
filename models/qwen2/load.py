@@ -29,7 +29,8 @@ def build(max_seq_len: int, max_batch_size: int, repo_id: str, force_dtype: Opti
   _model = model
   if config.tie_word_embeddings:
     _model = model.model
-    fixup = lambda k: k[len('model.'):] if k.startswith('model.') else k
+    def fixup(k):
+      return k[len('model.'):] if k.startswith('model.') else k
     state_dict = {fixup(k): v for k, v in state_dict.items()}
   state_dict = {k:v.to(dtype=getattr(torch, config.torch_dtype)) for k,v in state_dict.items()}
   _model.load_state_dict(state_dict, assign=True, strict=True)

@@ -39,8 +39,7 @@ def generate(model: GPT2, n_ctx: int, pad_id: int,
   min_prompt_size = min([len(t) for t in prompt_tokens])
   max_prompt_size = max([len(t) for t in prompt_tokens])
   total_len = min(n_ctx, max_prompt_size + max_new_tokens)
-  batch = torch.full(
-    (len(prompt_tokens), total_len), pad_id, dtype=torch.long, device=device)
+  batch = torch.full((len(prompt_tokens), total_len), pad_id, dtype=torch.long, device=device)
   mask = torch.ones_like(batch, dtype=torch.long, device=device)
   for i, toks in enumerate(prompt_tokens):
     batch[i, :len(toks)] = torch.tensor(toks, dtype=torch.long, device=device)
@@ -48,7 +47,7 @@ def generate(model: GPT2, n_ctx: int, pad_id: int,
   model.eval()
   cur_pos = min_prompt_size
   while cur_pos < total_len:
-    context = batch[:,:cur_pos] if cur_pos<=n_ctx else batch[:, -n_ctx:]
+    context = batch[:, :cur_pos] if cur_pos <= n_ctx else batch[:, -n_ctx:]
     with torch.no_grad():
       logits = model.forward(context)
     if temperature > 0:
@@ -82,10 +81,7 @@ def top_p_logits(logits: Tensor, p: float):
   counts = (cumulative_probs <= p).long().sum(dim=-1, keepdim=True)
   indices = torch.maximum(counts - 1, torch.zeros_like(counts)).long()
   min_values = torch.gather(sorted_logits, -1, indices)
-  return torch.where(
-    logits < min_values,
-    torch.full_like(logits, -1e10, dtype=logits.dtype, device=logits.device),
-    logits)
+  return torch.where(logits < min_values, torch.full_like(logits, -1e10, dtype=logits.dtype, device=logits.device), logits)
 
 
 def top_k_logits(logits: Tensor, k: int):
@@ -94,7 +90,4 @@ def top_k_logits(logits: Tensor, k: int):
     return logits
   values, _ = torch.topk(logits, k=k)
   min_values = values[:, :, [-1]]
-  return torch.where(
-    logits < min_values,
-    torch.full_like(logits, -1e10, dtype=logits.dtype, device=logits.device),
-    logits)
+  return torch.where(logits < min_values, torch.full_like(logits, -1e10, dtype=logits.dtype, device=logits.device), logits)
