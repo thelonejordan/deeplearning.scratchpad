@@ -23,7 +23,7 @@ class Qwen(Transformer, Generator):
     return generator
 
   @property
-  def G(self):
+  def args(self):
     # HACK: AttributeError: Qwen2TokenizerFast has no attribute pad_id
     # (File "/workspace/deeplearning.scratchpad/models/llama2/generate.py")
     pad_id = self.tokenizer.encode(self.tokenizer.special_tokens_map['pad_token'])[0]
@@ -32,11 +32,11 @@ class Qwen(Transformer, Generator):
 
   def text_completion(self, prompts: list[str], temperature: float=0.6, top_p: float=0.9,
                       max_gen_len: Optional[int]=None, logprobs: bool = False, echo: bool = False):
-    return text_completion(*self.G, prompts, temperature, top_p, max_gen_len, logprobs, echo)
+    return text_completion(*self.args, prompts, temperature, top_p, max_gen_len, logprobs, echo)
 
   def chat_completion(self, prompts: list[str], temperature: float=0.6, top_p: float=0.9,
                       max_gen_len: Optional[int]=None, logprobs: bool = False):
-    return chat_completion(*self.G, prompts, temperature, top_p, max_gen_len, logprobs)
+    return chat_completion(*self.args, prompts, temperature, top_p, max_gen_len, logprobs)
 
 
 def text_completion(model: Qwen, tokenizer: Any, max_seq_len: int, max_batch_size: int, pad_id: int, eos_id: int,
