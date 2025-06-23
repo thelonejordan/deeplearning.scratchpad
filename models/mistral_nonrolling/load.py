@@ -31,7 +31,8 @@ def _safetensors_load(repo_id: str, dim: int, n_layers: int, n_heads: int, n_kv_
     **{f"model.layers.{l}.input_layernorm.weight": f"layers.{l}.attention_norm.weight" for l in range(n_layers)},
     **{f"model.layers.{l}.post_attention_layernorm.weight": f"layers.{l}.ffn_norm.weight" for l in range(n_layers)},
     **{f'model.layers.{l}.self_attn.{var}_proj.weight': f'layers.{l}.attention.w{var}.weight' for var in "qkvo" for l in range(n_layers)},
-    **{f"model.layers.{l}.mlp.{y}_proj.weight": f"layers.{l}.feed_forward.w{x}.weight" for x, y in {"1": "gate", "2": "down", "3": "up"}.items() for l in range(n_layers)},
+    **{f"model.layers.{l}.mlp.{y}_proj.weight": f"layers.{l}.feed_forward.w{x}.weight" for x, y in {"1": "gate", "2": "down", "3": "up"}.items() \
+        for l in range(n_layers)},
     "model.norm.weight": "norm.weight",
     "lm_head.weight": "output.weight",
   }

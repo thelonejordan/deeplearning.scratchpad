@@ -27,10 +27,16 @@
 3. Speech
 	- [ ] Whisper
 
-## Tests
+## Test
 
 ```shell
 PYTHONPATH=. python -m unittest tests
+```
+
+## Lint
+
+```shell
+ruff check . --fix
 ```
 
 ## Type Checking

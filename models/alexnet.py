@@ -97,7 +97,7 @@ class AlexNet:
   @timeit(desc="Load time")
   def from_pretrained(num_classes: int=1000, dropout: float=0.5) -> AlexNet:
     import torchvision.models as tvm
-    weights = tvm.get_weight(f"AlexNet_Weights.DEFAULT")
+    weights = tvm.get_weight("AlexNet_Weights.DEFAULT")
     config = AlexNetConfig(num_classes, dropout)
     model = AlexNetModel(**asdict(config))
     state_dict = weights.get_state_dict()
@@ -107,7 +107,7 @@ class AlexNet:
 
 def get_utilities():
   import torchvision.models as tvm
-  weights = tvm.get_weight(f"AlexNet_Weights.DEFAULT")
+  weights = tvm.get_weight("AlexNet_Weights.DEFAULT")
   preprocessor, categories = weights.transforms(antialias=True), weights.meta["categories"]
   return preprocessor, list(categories)
 

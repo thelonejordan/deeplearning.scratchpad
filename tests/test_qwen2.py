@@ -2,9 +2,13 @@
 
 import os
 import unittest
+import pathlib
+import json
 
 import torch
 from transformers import AutoTokenizer, Qwen2ForCausalLM
+from huggingface_hub import snapshot_download
+from models.qwen2.config import CONFIGS
 from models.qwen2.generate import Qwen
 from models.helpers import set_device
 
@@ -137,6 +141,24 @@ class TestQwen2InstructGreedy(unittest.TestCase):
   def test_qwen2_5_smallest_self_chat_completion(self):
     repo_id = "Qwen/Qwen2.5-0.5B-Instruct"
     self._helper_test_self_chat_completion(repo_id)
+
+
+class TestQwen2Configs(unittest.TestCase):
+  def test_qwen2_configs(self):
+    for repo_id, conf in CONFIGS.items():
+      hf_config_dir = snapshot_download(repo_id, allow_patterns="config.json")
+      pth = pathlib.Path(hf_config_dir) / "config.json"
+      with pth.open() as f:
+        conf_hf = json.load(f)
+      for key in conf:
+        if key == "dim": key_hf = "hidden_size"
+        elif key == "hidden_dim": key_hf = "intermediate_size"
+        elif key == "n_heads": key_hf = "num_attention_heads"
+        elif key == "n_layers": key_hf = "num_hidden_layers"
+        elif key == "n_kv_heads": key_hf = "num_key_value_heads"
+        elif key == "norm_eps": key_hf = "rms_norm_eps"
+        else: key_hf = key
+        assert conf[key] == conf_hf[key_hf], (key, conf[key], key_hf, conf_hf[key_hf])
 
 
 if __name__ == "__main__":
