@@ -1,6 +1,6 @@
 torch
 torchvision
-huggingface-hub[cli]
+huggingface-hub[cli,hf_xet]
 transformers[torch]
 tiktoken
 sentencepiece
