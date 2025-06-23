@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Optional
+from typing import Optional, Sequence
 from tqdm import trange
 
 import torch
@@ -14,10 +14,12 @@ from models.llama2.generate import CompletionPrediction, ChatPrediction
 from models.llama.generate import sample_top_p
 
 
-class Llama(Generator):
-  def __init__(self, model: Transformer, tokenizer: Tokenizer, config: LlamaConfig):
-    self.model, self.tokenizer, self.config = model, tokenizer, config
-    self.formatter = ChatFormat(tokenizer)
+class Llama(Transformer, Generator):
+  def __init__(self, *args, **kwargs):
+    assert "config" in kwargs and "tokenizer" in kwargs
+    self.config: LlamaConfig = kwargs.pop("config")
+    self.tokenizer: Tokenizer = kwargs.pop("tokenizer")
+    super().__init__(*args, **kwargs)
 
   @staticmethod
   @timeit(desc="Load time", ms=False)
@@ -25,24 +27,31 @@ class Llama(Generator):
                       model_desc: ModelOptions='8B', version: VersionOptions='0',instruct: bool=False,
                       force_dtype: Optional[str]=None) -> Llama:
 
-    model, tokenizer, config = build(
-      max_seq_len, max_batch_size,
-      model_desc=model_desc, version=version, instruct=instruct,
-      safetensors=bool(SAFETENSORS), force_dtype=force_dtype
+    generator, _, __ = build(
+      max_seq_len, max_batch_size, model_desc, version, instruct,
+      safetensors=bool(SAFETENSORS), force_dtype=force_dtype, model_class=Llama,
     )
-    return Llama(model, tokenizer, config)
+    return generator
+
+  @property
+  def args(self):
+    return (
+      self, self.tokenizer, self.config.max_seq_len, self.config.max_batch_size,
+      self.tokenizer.pad_id, self.tokenizer.stop_tokens,
+    )
 
   def text_completion(self, prompts: list[str], temperature: float=0.6, top_p: float=0.9,
                       max_gen_len: Optional[int]=None, logprobs: bool=False, echo: bool=False):
-    return text_completion(self, prompts, temperature, top_p, max_gen_len, logprobs, echo)
+    return text_completion(*self.args, prompts, temperature, top_p, max_gen_len, logprobs, echo)
 
   def chat_completion(self, dialogs: list[Dialog], temperature: float=0.6, top_p: float=0.9,
                       max_gen_len: Optional[int]=None, logprobs: bool=False):
-    return chat_completion(self, dialogs, temperature, top_p, max_gen_len, logprobs)
+    return chat_completion(*self.args, dialogs, temperature, top_p, max_gen_len, logprobs)
 
 
 @torch.inference_mode()
-def generate(generator: Llama, prompt_tokens: list[list[int]], max_gen_len: int, temperature: float=0.6, top_p: float=0.9,
+def generate(model: Llama, max_seq_len: int, max_batch_size: int, pad_id: int, stop_tokens: Sequence[int],
+             prompt_tokens: list[list[int]], max_gen_len: int, temperature: float=0.6, top_p: float=0.9,
              logprobs: bool=False, echo: bool=False) -> tuple[list[list[int]], Optional[list[list[float]]]]:
   """
   Generate text sequences based on provided prompts using the language generation model.
@@ -62,8 +71,7 @@ def generate(generator: Llama, prompt_tokens: list[list[int]], max_gen_len: int,
     This method uses the provided prompts as a basis for generating text. It employs nucleus sampling to produce text with controlled randomness.
     If logprobs is True, token log probabilities are computed for each generated token.
   """
-  model, tokenizer, device = generator.model, generator.tokenizer, generator.device
-  max_batch_size, max_seq_len = generator.config.max_batch_size, generator.config.max_seq_len
+  device = model.device
   bsz = len(prompt_tokens)
   assert bsz <= max_batch_size, (bsz, max_batch_size)
 
@@ -72,7 +80,6 @@ def generate(generator: Llama, prompt_tokens: list[list[int]], max_gen_len: int,
   assert max_prompt_len <= max_seq_len
   total_len = min(max_seq_len, max_gen_len + max_prompt_len)
 
-  pad_id = tokenizer.pad_id
   tokens = torch.full((bsz, total_len), pad_id, dtype=torch.long, device=device)
   for k, t in enumerate(prompt_tokens):
     tokens[k, : len(t)] = torch.tensor(t, dtype=torch.long, device=device)
@@ -91,7 +98,7 @@ def generate(generator: Llama, prompt_tokens: list[list[int]], max_gen_len: int,
       ignore_index=pad_id,
     )
 
-  stop_tokens = torch.tensor(list(tokenizer.stop_tokens), device=device)
+  stop_tokens = torch.tensor(list(stop_tokens), device=device)
 
   for cur_pos in trange(min_prompt_len, total_len, desc="Generating tokens"):
     logits = model.forward(tokens[:, prev_pos:cur_pos], prev_pos)
@@ -131,7 +138,7 @@ def generate(generator: Llama, prompt_tokens: list[list[int]], max_gen_len: int,
     if logprobs:
       probs = token_logprobs[i][start : len(prompt_tokens[i]) + max_gen_len]
     # cut to after eos tok if any
-    for stop_token in tokenizer.stop_tokens:
+    for stop_token in stop_tokens:
       try:
         eos_idx = toks.index(stop_token)
         toks = toks[:eos_idx]
@@ -145,7 +152,8 @@ def generate(generator: Llama, prompt_tokens: list[list[int]], max_gen_len: int,
   return out_tokens, (out_logprobs if logprobs else None)
 
 
-def text_completion(generator: Llama, prompts: list[str], temperature: float=0.6, top_p: float=0.9,
+def text_completion(model: Llama, tokenizer: Tokenizer, max_seq_len: int, max_batch_size: int, pad_id: int, stop_tokens: Sequence[int],
+                    prompts: list[str], temperature: float=0.6, top_p: float=0.9,
                     max_gen_len: Optional[int]=None, logprobs: bool=False, echo: bool=False) -> list[CompletionPrediction]:
   """
   Perform text completion for a list of prompts using the language generation model.
@@ -166,12 +174,11 @@ def text_completion(generator: Llama, prompts: list[str], temperature: float=0.6
     This method generates text completions for the provided prompts, employing nucleus sampling to introduce controlled randomness.
     If logprobs is True, token log probabilities are computed for each generated token.
   """
-  tokenizer, max_seq_len = generator.tokenizer, generator.config.max_seq_len
   if max_gen_len is None:
     max_gen_len = max_seq_len - 1
   prompt_tokens = [tokenizer.encode(x, bos=True, eos=False) for x in prompts]
   generation_tokens, generation_logprobs = generate(
-    generator=generator,
+    model, max_seq_len, max_batch_size, pad_id, stop_tokens,
     prompt_tokens=prompt_tokens,
     max_gen_len=max_gen_len,
     temperature=temperature,
@@ -191,7 +198,8 @@ def text_completion(generator: Llama, prompts: list[str], temperature: float=0.6
   return [{"generation": tokenizer.decode(t)} for t in generation_tokens]
 
 
-def chat_completion(generator: Llama, dialogs: list[Dialog], temperature: float=0.6, top_p: float=0.9,
+def chat_completion(model: Llama, tokenizer: Tokenizer, max_seq_len: int, max_batch_size: int, pad_id: int, stop_tokens: Sequence[int],
+                    dialogs: list[Dialog], temperature: float=0.6, top_p: float=0.9,
                     max_gen_len: Optional[int]=None, logprobs: bool=False) -> list[ChatPrediction]:
   """
   Generate assistant responses for a list of conversational dialogs using the language generation model.
@@ -213,11 +221,12 @@ def chat_completion(generator: Llama, dialogs: list[Dialog], temperature: float=
     If logprobs is True, token log probabilities are computed for each generated token.
   """
   if max_gen_len is None:
-    max_gen_len = generator.config.max_seq_len - 1
+    max_gen_len = max_seq_len - 1
 
-  prompt_tokens = [generator.formatter.encode_dialog_prompt(dialog) for dialog in dialogs]
+  formatter = ChatFormat(tokenizer)
+  prompt_tokens = [formatter.encode_dialog_prompt(dialog) for dialog in dialogs]
   generation_tokens, generation_logprobs = generate(
-    generator,
+    model, max_seq_len, max_batch_size, pad_id, stop_tokens,
     prompt_tokens=prompt_tokens,
     max_gen_len=max_gen_len,
     temperature=temperature,
@@ -229,9 +238,9 @@ def chat_completion(generator: Llama, dialogs: list[Dialog], temperature: float=
       {
         "generation": {
           "role": "assistant",
-          "content": generator.tokenizer.decode(t),
+          "content": tokenizer.decode(t),
         },
-        "tokens": [generator.tokenizer.decode([x]) for x in t],
+        "tokens": [tokenizer.decode([x]) for x in t],
         "logprobs": logprobs_i,
       }
       for t, logprobs_i in zip(generation_tokens, generation_logprobs)
@@ -240,7 +249,7 @@ def chat_completion(generator: Llama, dialogs: list[Dialog], temperature: float=
     {
       "generation": {
         "role": "assistant",
-        "content": generator.tokenizer.decode(t),
+        "content": tokenizer.decode(t),
       },
     }
     for t in generation_tokens

@@ -48,13 +48,12 @@ def set_seed(device: torch.device, seed: Optional[int]=None):
 
 class Generator:
   @property
-  def device(self) -> torch.device: return next(cast(torch.nn.Module, self.model).parameters()).device  # type: ignore
+  def device(self) -> torch.device: return next(cast(torch.nn.Module, self).parameters()).device  # type: ignore
   @property
-  def dtype(self) -> torch.dtype: return next(cast(torch.nn.Module, self.model).parameters()).dtype  # type: ignore
-  def to(self, device: torch.device):
-    self.model = cast(torch.nn.Module, self.model).to(device)  # type: ignore
-    return self
+  def dtype(self) -> torch.dtype: return next(cast(torch.nn.Module, self).parameters()).dtype  # type: ignore
 
+
+# helpers from https://github.com/tinygrad/tinygrad/blob/master/tinygrad/helpers.py
 
 @functools.cache
 def getenv(key:str, default=0): return type(default)(os.getenv(key, default))

@@ -34,7 +34,7 @@ def _torch_load(repo_id: str, transposed: set[str]=set(), skip: set[str]=set()):
 
 ModelOptions = Literal['gpt2','gpt2-medium','gpt2-large','gpt2-xl']
 
-def build(model_desc: ModelOptions='gpt2', safetensors: bool=True):
+def build(model_desc: ModelOptions='gpt2', safetensors: bool=True, model_class: type[Transformer]=Transformer):
   assert model_desc in get_args(ModelOptions), f'invalid model_desc: {model_desc}'
   params = CONFIGS[model_desc]
   transposed = {'attn.c_attn.weight', 'attn.c_proj.weight', 'mlp.c_fc.weight', 'mlp.c_proj.weight'}
@@ -49,7 +49,8 @@ def build(model_desc: ModelOptions='gpt2', safetensors: bool=True):
   default_dtype = torch.get_default_dtype()
   torch.set_default_dtype(getattr(torch, config.torch_dtype))
   with torch.device("meta"):
-    model = Transformer(**asdict(config))
+    model = model_class(**asdict(config), **{"tokenizer": tokenizer, "config": config})
   model.transformer.load_state_dict(state_dict, assign=True, strict=True)
   torch.set_default_dtype(default_dtype)
-  return model.apply_weight_sharing(), tokenizer, config
+  model = model.apply_weight_sharing()
+  return model, tokenizer, config

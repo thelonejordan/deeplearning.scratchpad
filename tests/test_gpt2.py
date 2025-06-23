@@ -27,11 +27,11 @@ def huggingface_run(prompts: list[str], model_desc: str="gpt2"):
 def self_run(prompts: list[str], model_desc: str="gpt2"):
   max_seq_len = 30
   generator = GPT2.from_pretrained(model_desc).to(DEVICE)
-  tokenizer = generator.tokenizer
-  tokenizer.pad_id = tokenizer.eos_id
+  model, tokenizer, n_ctx, pad_id = generator.args
+  pad_id = tokenizer.eos_id
   inputs = tokenizer.encode_batch(prompts)
   max_new_tokens = max_seq_len - max([len(i) for i in inputs])
-  outputs = generate(generator, inputs, max_new_tokens, temperature=0.0)
+  outputs = generate(model, n_ctx, pad_id, inputs, max_new_tokens, temperature=0.0)
   texts = tokenizer.decode_batch(outputs)
   return inputs, outputs, texts
 
