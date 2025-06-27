@@ -2,6 +2,8 @@ from __future__ import annotations
 from typing import Optional
 from dataclasses import dataclass
 
+# SWA: https://huggingface.co/Qwen/Qwen2.5-32B-Instruct/discussions/1#66ebd7b85d5bc7347366da3f
+
 @dataclass
 class QwenConfig:
   dim: int
@@ -39,6 +41,11 @@ class QwenConfig:
     return QwenConfig(max_seq_len=max_seq_len, max_batch_size=max_batch_size, **params)
 
 
+# https://qwenlm.github.io/blog/qwq-32b/
+# https://qwenlm.github.io/blog/qwen2.5-1m/
+# https://qwenlm.github.io/blog/qwq-32b-preview/
+# https://qwenlm.github.io/blog/qwen2.5/
+# https://qwenlm.github.io/blog/qwen2/
 # Coder, Maths and other variants are supported but not listed here
 
 CONFIGS = {

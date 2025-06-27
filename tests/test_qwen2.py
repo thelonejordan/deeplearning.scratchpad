@@ -21,7 +21,8 @@ os.environ["TOKENIZERS_PARALLELISM"] = "true"
 
 class TestQwen2InstructGreedy(unittest.TestCase):
   def setUp(self):
-    self.model_dtype = "bfloat16"
+    # test_qwen2_5_smallest_huggingface_chat_completion fails with bfloat16
+    self.model_dtype = "float32"
     self.dialogs = [
       [
         dict(role="system", content="You are a helpful and truthful assistant. You should think step-by-step."),
@@ -72,6 +73,7 @@ class TestQwen2InstructGreedy(unittest.TestCase):
     inputs_text_target, inputs_target, outputs_target, completion_target, outputs_target_trunc, completion_target_trunc = self._get_targets(repo_id)
     tokenizer = AutoTokenizer.from_pretrained(repo_id)
     model = Qwen2ForCausalLM.from_pretrained(repo_id, torch_dtype=self.model_dtype, device_map=DEVICE)
+    assert isinstance(model.config.use_sliding_window, bool) and not model.config.use_sliding_window
     inputs_text = tokenizer.apply_chat_template(self.dialogs, tokenize=False, add_generation_prompt=True)
     assert model.dtype == getattr(torch, self.model_dtype)
     model_inputs = tokenizer(inputs_text, return_tensors="pt").to(model.device)
