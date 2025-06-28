@@ -2,6 +2,7 @@ import torch
 from torch import nn, Tensor
 import torch.nn.functional as F
 
+from models.helpers import accept_extra_kwargs
 from models.gpt2.attention import CausalSelfAttention
 
 
@@ -31,7 +32,8 @@ class Block(nn.Module):
 
 
 class Transformer(nn.Module):
-  def __init__(self, n_embd: int, n_head: int, n_ctx: int, norm_eps: float, vocab_size: int, n_layer: int, **_):
+  @accept_extra_kwargs()
+  def __init__(self, n_embd: int, n_head: int, n_ctx: int, norm_eps: float, vocab_size: int, n_layer: int):
     super().__init__()
     self.transformer = nn.ModuleDict(
       dict(

@@ -53,6 +53,18 @@ class Generator:
   def dtype(self) -> torch.dtype: return next(cast(torch.nn.Module, self).parameters()).dtype  # type: ignore
 
 
+def accept_extra_kwargs(method=True):
+  def _decorator(func):
+    @functools.wraps(func)
+    def __wrapper(*args, **kwargs):
+      accept = func.__code__.co_varnames
+      if method: accept = accept[1:]  # remove self
+      kwargs = {k:v for k,v in kwargs.items() if k in accept}
+      return func(*args, **kwargs)
+    return __wrapper
+  return _decorator
+
+
 # helpers from https://github.com/tinygrad/tinygrad/blob/master/tinygrad/helpers.py
 
 @functools.cache

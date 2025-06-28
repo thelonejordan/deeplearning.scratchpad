@@ -4,7 +4,7 @@ import torch
 from torch import Tensor, nn
 import torch.nn.functional as F
 
-from models.helpers import set_device
+from models.helpers import set_device, accept_extra_kwargs
 from models.llama.rope import precompute_freqs_cis
 from models.llama.attention import Attention
 
@@ -51,8 +51,9 @@ class Block(nn.Module):
 
 
 class Transformer(nn.Module):
+  @accept_extra_kwargs()
   def __init__(self, dim: int, n_heads: int, head_dim: int, hidden_dim: int, n_layers: int,
-               max_batch_size: int, max_seq_len: int, vocab_size: int, norm_eps: float, rope_theta: float, **_):
+               max_batch_size: int, max_seq_len: int, vocab_size: int, norm_eps: float, rope_theta: float):
     super().__init__()
     self.max_seq_len = max_seq_len
     self.model = nn.ModuleDict(dict(

@@ -4,7 +4,7 @@ import torch
 from torch import nn, Tensor
 import torch.nn.functional as F
 
-from models.helpers import set_device
+from models.helpers import set_device, accept_extra_kwargs
 from models.llama.transformer import RMSNorm
 from models.mistral_nonrolling.rope import precompute_freqs_cis
 from models.mistral_nonrolling.attention import Attention
@@ -37,8 +37,9 @@ class Block(nn.Module):
 
 
 class Transformer(nn.Module):
+  @accept_extra_kwargs()
   def __init__(self, dim: int, head_dim: int, hidden_dim: int, n_heads: int, n_kv_heads: int, vocab_size: int, n_layers: int,
-               max_position_embeddings: int, max_seq_len: int, max_batch_size: int, norm_eps: float, rope_theta: float, **_):
+               max_position_embeddings: int, max_seq_len: int, max_batch_size: int, norm_eps: float, rope_theta: float):
     super().__init__()
     self.max_seq_len = max_seq_len
     self.tok_embeddings = nn.Embedding(vocab_size, dim)
