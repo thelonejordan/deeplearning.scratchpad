@@ -3,7 +3,7 @@ from typing import Optional
 import torch
 from torch import Tensor, nn
 
-from models.helpers import set_device
+from models.helpers import set_device, accept_extra_kwargs
 from models.llama.transformer import RMSNorm
 from models.mistral_nonrolling.rope import precompute_freqs_cis
 from models.mistral_nonrolling.transformer import FeedForward
@@ -26,8 +26,9 @@ class Block(nn.Module):
 
 
 class Transformer(nn.Module):
+  @accept_extra_kwargs()
   def __init__(self, dim: int, head_dim: int, hidden_dim: int, n_heads: int, n_kv_heads: int, sliding_window: int,
-               vocab_size: int, n_layers: int, max_position_embeddings: int, max_batch_size: int, norm_eps: float, rope_theta: float, **_):
+               vocab_size: int, n_layers: int, max_position_embeddings: int, max_batch_size: int, norm_eps: float, rope_theta: float):
     super().__init__()
     self.sliding_window = sliding_window
     self.tok_embeddings = nn.Embedding(vocab_size, dim)
