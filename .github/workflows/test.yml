@@ -76,7 +76,7 @@ jobs:
           SDPA=0 pytest -k "test_llama_3_dot_2_1B" tests/test_llama3.py
 
   testqwen2:
-    name: Test Qwen2.5 (0.5B) on CPU
+    name: Test Qwen2 and Qwen2.5 (0.5B) on CPU
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -107,8 +107,9 @@ jobs:
       - name: Test with pytest
         run: |
           pytest tests/test_qwen2.py::TestQwen2Configs
-          SDPA=1 pytest -k "inputs" tests/test_qwen2.py::TestQwen2InstructGreedy
-          SDPA=0 pytest -k "inputs" tests/test_qwen2.py::TestQwen2InstructGreedy
+          pytest -k "inputs" tests/test_qwen2.py::TestQwen2InstructGreedy
+          SDPA=1 pytest -k "completion" tests/test_qwen2.py::TestQwen2InstructGreedy
+          SDPA=0 pytest -k "completion" tests/test_qwen2.py::TestQwen2InstructGreedy
 
   testvisionmodels:
     name: Test vision models
