@@ -7,13 +7,13 @@ from models.helpers import set_device
 
 
 def _compute_default_rope_parameters(dim: int, head_dim: int, rope_theta: float=1000000., partial_rotary_factor: float=1.,
-                                     device: Optional[torch.device] = None) -> tuple[Tensor, float]:
+                                     device: Optional[torch.device]=None) -> tuple[Tensor, float]:
     """
     Computes the inverse frequencies according to the original RoPE implementation
 
     Returns:
-        Tuple of (`torch.Tensor`, `float`), containing the inverse frequencies for the RoPE embeddings and the
-        post-processing scaling factor applied to the computed cos/sin (unused in this type of RoPE).
+      Tuple of (`torch.Tensor`, `float`), containing the inverse frequencies for the RoPE embeddings and the
+      post-processing scaling factor applied to the computed cos/sin (unused in this type of RoPE).
     """
     base = rope_theta
     dim = int(head_dim * partial_rotary_factor)

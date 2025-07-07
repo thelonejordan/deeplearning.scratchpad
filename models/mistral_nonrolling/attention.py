@@ -18,8 +18,7 @@ def repeat_kv(keys: Tensor, values: Tensor, repeats: int, dim: int=2) -> tuple[T
 def _attention(query: Tensor, key: Tensor, value: Tensor, mask: Optional[Tensor], scale: float) -> Tensor:
   scores = torch.matmul(query, key.transpose(2, 3)) * scale  # (bsz, n_heads, seqlen | 1, seqlen)
   if mask is not None: scores += mask[None, None, ...]
-  scores = scores.float()
-  scores = F.softmax(scores, dim=-1).type_as(query)
+  scores = F.softmax(scores.float(), dim=-1).type_as(query)
   output = torch.matmul(scores, value)  # (bs, n_local_heads, slen, head_dim)
   return output
 

@@ -15,7 +15,7 @@ def build(max_seq_len: int, max_batch_size: int, repo_id: str, force_dtype: Opti
   if force_dtype is not None:
     params['torch_dtype'] = force_dtype
   for key in ['bos_token_id', 'eos_token_id', 'sliding_window', 'max_window_layers']:
-    params.pop(key)
+    if key in params: params.pop(key)
   config = QwenConfig.build(max_seq_len, max_batch_size, **params)
   # AssertionError: config.vocab_size=152064 != len(tokenizer.get_vocab())=151665
   # AssertionError: config.vocab_size=152064 != len(tokenizer)=151665

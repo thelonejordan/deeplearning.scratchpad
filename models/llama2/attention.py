@@ -8,23 +8,15 @@ from models.helpers import SDPA, set_device
 from models.llama.rope import apply_rotary_emb
 from models.llama.attention import _attention, _fused_attention
 
+
+# n_rep > 1 aka n_kv_heads != n_heads implies MQA [arxiv/2307.09288, A.2.1]
 def repeat_kv(x: Tensor, n_rep: int) -> Tensor:
   """torch.repeat_interleave(x, dim=2, repeats=n_rep)"""
   bs, slen, n_kv_heads, head_dim = x.shape
-  if n_rep == 1:
-    return x
-  return (
-    x[:, :, :, None, :]
-    .expand(bs, slen, n_kv_heads, n_rep, head_dim)
-    .reshape(bs, slen, n_kv_heads * n_rep, head_dim)
-  )
-
-# n_rep > 1 aka n_kv_heads != n_heads implies MQA [arxiv/2307.09288, A.2.1]
-def repeat_kv_alt(x: Tensor, n_rep: int) -> Tensor:
   if n_rep == 1: return x
-  bs, seqlen, n_kv_heads, head_dim = x.shape
-  x = x.unsqueeze(-2).expand(-1, -1, -1, n_rep, -1)
-  return x.reshape(bs, seqlen, n_kv_heads * n_rep, head_dim)
+  x = x[:, :, :, None, :].expand(bs, slen, n_kv_heads, n_rep, head_dim)
+  return x.reshape(bs, slen, n_kv_heads * n_rep, head_dim)
+
 
 class Attention(nn.Module):
   _attn_fn: Callable[..., Tensor] = staticmethod(_fused_attention if bool(SDPA) else _attention)
@@ -60,14 +52,14 @@ class Attention(nn.Module):
     values = self.cache_v[:bsz, : start_pos + seqlen]
 
     # repeat k/v heads if n_kv_heads < n_heads
-    keys = repeat_kv(keys, self.n_rep)  # (bs, cache_len + seqlen, n_local_heads, head_dim)
-    values = repeat_kv(values, self.n_rep)  # (bs, cache_len + seqlen, n_local_heads, head_dim)
+    keys = repeat_kv(keys, self.n_rep)  # (bs, n_local_heads, cache_len + seqlen, head_dim)
+    values = repeat_kv(values, self.n_rep)  # (bs, n_local_heads, cache_len + seqlen, head_dim)
 
     xq = xq.transpose(1, 2)  # (bs, n_local_heads, seqlen, head_dim)
     keys = keys.transpose(1, 2)  # (bs, n_local_heads, cache_len + seqlen, head_dim)
     values = values.transpose(1, 2)  # (bs, n_local_heads, cache_len + seqlen, head_dim)
     output = self._attn_fn(xq, keys, values, mask, 1.0/math.sqrt(self.head_dim))
-
     output = output.transpose(1, 2).contiguous().view(bsz, seqlen, -1)
+
     output = self.o_proj(output)
     return output
