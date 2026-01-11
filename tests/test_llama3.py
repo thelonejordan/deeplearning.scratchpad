@@ -31,7 +31,7 @@ def huggingface_run(prompts: list[str], model_desc: str="3B", version: str="2"):
   inputs = tokenizer(prompts, return_tensors="pt")
   input_tokens = inputs["input_ids"].tolist()
   inputs = {k:v.to(DEVICE) for k,v in inputs.items()}
-  model = LlamaForCausalLM.from_pretrained(repo_id, torch_dtype="float16").to(DEVICE)
+  model = LlamaForCausalLM.from_pretrained(repo_id, dtype="float16").to(DEVICE)
   # Setting `pad_token_id` to `eos_token_id`:50256 for open-end generation.
   model.generation_config.pad_token_id = model.config.eos_token_id
   outputs = model.generate(**inputs, max_length=MAX_SEQ_LEN, do_sample=False, temperature=None, top_p=None)

@@ -72,7 +72,7 @@ class TestQwen2InstructGreedy(unittest.TestCase):
   def _helper_test_huggingface_chat_completion(self, repo_id):
     inputs_text_target, inputs_target, outputs_target, completion_target, outputs_target_trunc, completion_target_trunc = self._get_targets(repo_id)
     tokenizer = AutoTokenizer.from_pretrained(repo_id)
-    model = Qwen2ForCausalLM.from_pretrained(repo_id, torch_dtype=self.model_dtype, device_map=DEVICE)
+    model = Qwen2ForCausalLM.from_pretrained(repo_id, dtype=self.model_dtype, device_map=DEVICE)
     assert isinstance(model.config.use_sliding_window, bool) and not model.config.use_sliding_window
     inputs_text = tokenizer.apply_chat_template(self.dialogs, tokenize=False, add_generation_prompt=True)
     assert model.dtype == getattr(torch, self.model_dtype)

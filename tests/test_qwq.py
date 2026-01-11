@@ -46,7 +46,7 @@ class TestQwQChat(unittest.TestCase):
   def test_qwq_hugginface_chat_completion(self):
     repo_id = "Qwen/QwQ-32B-Preview"
     tokenizer = AutoTokenizer.from_pretrained(repo_id)
-    model = Qwen2ForCausalLM.from_pretrained(repo_id, torch_dtype="auto", device_map=DEVICE)
+    model = Qwen2ForCausalLM.from_pretrained(repo_id, dtype="auto", device_map=DEVICE)
     inputs_text = tokenizer.apply_chat_template(self.dialogs, tokenize=False, add_generation_prompt=True)
     model_inputs = tokenizer(inputs_text, return_tensors="pt").to(model.device)
     input_ids = model_inputs["input_ids"].tolist()

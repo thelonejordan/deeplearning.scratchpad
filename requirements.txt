@@ -4,6 +4,7 @@ huggingface-hub[cli,hf_xet]
 transformers[torch]
 tiktoken
 sentencepiece
+hf_transfer
 blobfile
 requests
 # notebook
