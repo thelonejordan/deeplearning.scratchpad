@@ -28,6 +28,12 @@ jobs:
       - name: Install dependencies
         run: uv sync --group dev
 
+      - name: Cache HuggingFace models
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/huggingface/hub
+          key: hf-gpt2-${{ runner.os }}
+
       - name: Display environment
         run: |
           uv run hf env
@@ -59,6 +65,12 @@ jobs:
         run: |
           uv run hf auth login --token "$HF_TOKEN"
 
+      - name: Cache HuggingFace models
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/huggingface/hub
+          key: hf-llama3.2-1b-${{ runner.os }}
+
       - name: Display environment
         run: |
           uv run hf env
@@ -89,6 +101,12 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_TOKEN_READONLY }}
         run: |
           uv run hf auth login --token "$HF_TOKEN"
+
+      - name: Cache HuggingFace models
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/huggingface/hub
+          key: hf-qwen2-0.5b-${{ runner.os }}
 
       - name: Display environment
         run: |
