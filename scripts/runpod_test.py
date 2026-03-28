@@ -45,19 +45,29 @@ def create_gpu_pod(name, image, gpu_type, hf_token=None):
     env = {}
     if hf_token:
         env["HF_TOKEN"] = hf_token
-    pod = runpod.create_pod(
-        name=name,
-        image_name=image,
-        gpu_type_id=gpu_type,
-        gpu_count=1,
-        container_disk_in_gb=30,
-        volume_in_gb=0,
-        ports="22/tcp",
-        start_ssh=True,
-        env=env if env else None,
-    )
-    print(f"Created pod: {pod['id']}")
-    return pod["id"]
+
+    gpu_types_to_try = [gpu_type] + [g for g in GPU_FALLBACKS if g != gpu_type]
+    for gpu in gpu_types_to_try:
+        try:
+            print(f"Trying GPU: {gpu}")
+            pod = runpod.create_pod(
+                name=name,
+                image_name=image,
+                gpu_type_id=gpu,
+                gpu_count=1,
+                container_disk_in_gb=30,
+                volume_in_gb=0,
+                ports="22/tcp",
+                start_ssh=True,
+                env=env if env else None,
+            )
+            print(f"Created pod: {pod['id']} (GPU: {gpu})")
+            return pod["id"]
+        except Exception as e:
+            print(f"Failed to create pod with {gpu}: {e}")
+            continue
+
+    raise RuntimeError("Could not create pod with any available GPU type")
 
 
 def wait_for_ssh(pod_id, timeout):
