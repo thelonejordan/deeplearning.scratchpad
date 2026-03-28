@@ -1,0 +1,25 @@
+[project]
+name = "deeplearning-scratchpad"
+version = "0.0.1"
+requires-python = ">=3.11"
+dependencies = [
+    "torch",
+    "torchvision",
+    "huggingface-hub[hf_xet]",
+    "transformers[torch]",
+    "tiktoken",
+    "sentencepiece",
+    "blobfile",
+    "requests",
+    "gradio>=6.10.0",
+    "protobuf>=7.34.1",
+    "hf-transfer>=0.1.9",
+]
+
+[dependency-groups]
+dev = [
+    "notebook",
+    "ipywidgets",
+    "ruff",
+    "pytest",
+]

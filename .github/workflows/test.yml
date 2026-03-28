@@ -19,27 +19,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        run: uv python install
 
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install pytest "huggingface_hub[cli,xf_xet]"
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          pip freeze
+        run: uv sync --group dev
 
       - name: Display environment
         run: |
-          huggingface-cli env
-          python env.py
+          uv run hf env
+          uv run python env.py
 
       - name: Test with pytest
         run: |
-          SDPA=1 pytest tests/test_gpt2.py
-          SDPA=0 pytest tests/test_gpt2.py
+          SDPA=1 uv run pytest tests/test_gpt2.py
+          SDPA=0 uv run pytest tests/test_gpt2.py
 
   testllama3:
     name: Test Llama3.2 (1B) on CPU
@@ -47,33 +44,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        run: uv python install
 
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install pytest "huggingface_hub[cli,xf_xet]"
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          pip freeze
+        run: uv sync --group dev
 
       - name: Login to HuggingFace
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN_READONLY }}
         run: |
-          huggingface-cli login --token "$HF_TOKEN"
+          uv run hf auth login --token "$HF_TOKEN"
 
       - name: Display environment
         run: |
-          huggingface-cli env
-          python env.py
+          uv run hf env
+          uv run python env.py
 
       - name: Test with pytest
         run: |
-          SDPA=1 pytest -k "test_llama_3_dot_2_1B" tests/test_llama3.py
-          SDPA=0 pytest -k "test_llama_3_dot_2_1B" tests/test_llama3.py
+          SDPA=1 uv run pytest -k "test_llama_3_dot_2_1B" tests/test_llama3.py
+          SDPA=0 uv run pytest -k "test_llama_3_dot_2_1B" tests/test_llama3.py
 
   testqwen2:
     name: Test Qwen2 and Qwen2.5 (0.5B) on CPU
@@ -81,35 +75,32 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        run: uv python install
 
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install pytest "huggingface_hub[cli,xf_xet]"
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          pip freeze
+        run: uv sync --group dev
 
       - name: Login to HuggingFace
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN_READONLY }}
         run: |
-          huggingface-cli login --token "$HF_TOKEN"
+          uv run hf auth login --token "$HF_TOKEN"
 
       - name: Display environment
         run: |
-          huggingface-cli env
-          python env.py
+          uv run hf env
+          uv run python env.py
 
       - name: Test with pytest
         run: |
-          pytest tests/test_qwen2.py::TestQwen2Configs
-          pytest -k "inputs" tests/test_qwen2.py::TestQwen2InstructGreedy
-          SDPA=1 pytest -k "completion" tests/test_qwen2.py::TestQwen2InstructGreedy
-          SDPA=0 pytest -k "completion" tests/test_qwen2.py::TestQwen2InstructGreedy
+          uv run pytest tests/test_qwen2.py::TestQwen2Configs
+          uv run pytest -k "inputs" tests/test_qwen2.py::TestQwen2InstructGreedy
+          SDPA=1 uv run pytest -k "completion" tests/test_qwen2.py::TestQwen2InstructGreedy
+          SDPA=0 uv run pytest -k "completion" tests/test_qwen2.py::TestQwen2InstructGreedy
 
   testvisionmodels:
     name: Test vision models
@@ -117,22 +108,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        run: uv python install
 
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install pytest
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          pip freeze
+        run: uv sync --group dev
 
       - name: Display environment
         run: |
-          python env.py
+          uv run python env.py
 
       - name: Test with pytest
         run: |
-          pytest tests/test_alexnet.py tests/test_resnet.py
+          uv run pytest tests/test_alexnet.py tests/test_resnet.py

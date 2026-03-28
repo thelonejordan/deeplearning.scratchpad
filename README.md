@@ -27,20 +27,27 @@
 3. Speech
 	- [ ] Whisper
 
+## Setup
+
+```shell
+uv sync              # install dependencies
+uv sync --group dev  # include dev tools (pytest, ruff, notebook, etc.)
+```
+
 ## Test
 
 ```shell
-PYTHONPATH=. python -m unittest tests
+uv run pytest tests
 ```
 
 ## Lint
 
 ```shell
-ruff check . --fix
+uv run ruff check . --fix
 ```
 
 ## Type Checking
 
 ```shell
-PYTHONPATH=. python -m mypy models
+uv run mypy models
 ```
