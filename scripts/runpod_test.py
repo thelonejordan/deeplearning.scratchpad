@@ -14,7 +14,14 @@ import runpod
 
 REPO_URL = "https://github.com/thelonejordan/deeplearning.scratchpad.git"
 DEFAULT_IMAGE = "runpod/pytorch:1.0.3-cu1281-torch260-ubuntu2204"
-DEFAULT_GPU = "NVIDIA GeForce RTX 4090"
+DEFAULT_GPU = "NVIDIA RTX 4000 Ada Generation"
+GPU_FALLBACKS = [
+    "NVIDIA RTX 4000 Ada Generation",
+    "NVIDIA GeForce RTX 4090",
+    "NVIDIA RTX A4000",
+    "NVIDIA L4",
+    "NVIDIA GeForce RTX 3090",
+]
 DEFAULT_TIMEOUT = 20 * 60  # 20 minutes
 POLL_INTERVAL = 10  # seconds
 
