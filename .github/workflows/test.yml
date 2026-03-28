@@ -17,7 +17,7 @@ jobs:
     name: Test GPT2 (small, medium) on CPU
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -48,7 +48,7 @@ jobs:
     name: Test Llama3.2 (1B) on CPU
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -85,7 +85,7 @@ jobs:
     name: Test Qwen2 and Qwen2.5 (0.5B) on CPU
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -124,7 +124,7 @@ jobs:
     name: Test vision models
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
