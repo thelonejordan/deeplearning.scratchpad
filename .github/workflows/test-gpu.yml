@@ -15,7 +15,7 @@ permissions:
   contents: read
 
 env:
-  RUNPOD_IMAGE: "runpod/pytorch:1.0.3-cu1281-torch260-ubuntu2204"
+  RUNPOD_IMAGE: "runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04"
   RUNPOD_GPU: "NVIDIA RTX 4000 Ada Generation"
 
 jobs:

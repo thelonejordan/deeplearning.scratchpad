@@ -6,17 +6,17 @@ import json
 import os
 import re
 import signal
+import subprocess
 import sys
 import time
 
-import subprocess
 import tempfile
 
 import paramiko
 import runpod
 
 REPO_URL = "https://github.com/thelonejordan/deeplearning.scratchpad.git"
-DEFAULT_IMAGE = "runpod/pytorch:1.0.3-cu1281-torch260-ubuntu2204"
+DEFAULT_IMAGE = "runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04"
 DEFAULT_GPU = "NVIDIA RTX 4000 Ada Generation"
 GPU_FALLBACKS = [
     "NVIDIA RTX 4000 Ada Generation",
@@ -107,25 +107,19 @@ def wait_for_ssh(pod_id, timeout):
 
 def ssh_exec(client, cmd, stream=True):
     """Execute a command over SSH. Returns exit code."""
-    # Source RunPod env vars (set via create_pod env param, stored in /etc/rp_environment)
-    full_cmd = f'bash -c \'source /etc/rp_environment 2>/dev/null; {cmd}\''
     print(f"$ {cmd}")
-    stdin, stdout, stderr = client.exec_command(full_cmd)
-    if stream:
-        for line in iter(stdout.readline, ""):
-            print(line, end="")
+    stdin, stdout, stderr = client.exec_command(cmd)
+    out = stdout.read().decode()
+    err = stderr.read().decode()
     exit_code = stdout.channel.recv_exit_status()
-    if not stream:
-        out = stdout.read().decode()
-        err = stderr.read().decode()
-        if out:
-            print(out)
-        if err:
-            print(err, file=sys.stderr)
+    if out:
+        print(out)
+    if err:
+        print(err, file=sys.stderr)
     return exit_code
 
 
-def run_tests_on_pod(host, port, commit_sha, test_commands, ssh_key_path):
+def run_tests_on_pod(host, port, commit_sha, test_commands, ssh_key_path, hf_token=None):
     client = paramiko.SSHClient()
     # RunPod pods are ephemeral and host keys are not known in advance
     client.set_missing_host_key_policy(paramiko.WarningPolicy())
@@ -146,11 +140,21 @@ def run_tests_on_pod(host, port, commit_sha, test_commands, ssh_key_path):
         ssh_exec(client, f"git clone {REPO_URL} /workspace/repo")
         ssh_exec(client, f"cd /workspace/repo && git checkout {commit_sha}")
 
-        # Install dependencies using pip (system Python already has torch+CUDA)
-        ssh_exec(client, "cd /workspace/repo && pip install transformers[torch] huggingface-hub[hf_xet] tiktoken sentencepiece blobfile requests protobuf hf-transfer pytest")
+        # Install dependencies (system Python already has torch+CUDA, don't touch those)
+        ssh_exec(client, "pip install transformers accelerate huggingface-hub[hf_xet] tiktoken sentencepiece blobfile requests protobuf hf-transfer pytest")
 
-        # HuggingFace login using the HF_TOKEN env var injected into the pod
-        ssh_exec(client, 'huggingface-cli login --token "$HF_TOKEN"')
+        # HuggingFace login via token file (Docker ENV not available in SSH sessions)
+        if hf_token:
+            sftp = client.open_sftp()
+            with sftp.file("/tmp/hf_token", "w") as f:
+                f.write(hf_token)
+            sftp.close()
+            print(f"Uploaded HF token ({len(hf_token)} chars, starts with {hf_token[:4]}...)")
+            ssh_exec(client, "cat /tmp/hf_token | wc -c")
+            ssh_exec(client, "python3 -c 'import huggingface_hub; huggingface_hub.login(open(\"/tmp/hf_token\").read().strip())' && rm /tmp/hf_token")
+            ssh_exec(client, "python3 -c 'import huggingface_hub; print(huggingface_hub.whoami())'")
+        else:
+            print("WARNING: No HF_TOKEN provided, skipping HuggingFace login")
 
         # Display environment
         ssh_exec(client, "nvidia-smi")
@@ -202,10 +206,10 @@ def main():
     try:
         hf_token = os.environ.get("HF_TOKEN")
         ssh_key_path, public_key = generate_ssh_keypair()
-        print(f"Generated ephemeral SSH keypair")
+        print("Generated ephemeral SSH keypair")
         pod_id = create_gpu_pod(args.pod_name, args.image, args.gpu_type, public_key, hf_token)
         host, port = wait_for_ssh(pod_id, timeout=min(args.timeout, 300))
-        exit_code = run_tests_on_pod(host, port, commit_sha, test_commands, ssh_key_path)
+        exit_code = run_tests_on_pod(host, port, commit_sha, test_commands, ssh_key_path, hf_token)
         sys.exit(exit_code)
     except Exception as e:
         print(f"ERROR: {e}", file=sys.stderr)
