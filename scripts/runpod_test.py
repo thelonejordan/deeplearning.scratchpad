@@ -107,8 +107,10 @@ def wait_for_ssh(pod_id, timeout):
 
 def ssh_exec(client, cmd, stream=True):
     """Execute a command over SSH. Returns exit code."""
+    # Source RunPod env vars (set via create_pod env param, stored in /etc/rp_environment)
+    full_cmd = f'bash -c \'source /etc/rp_environment 2>/dev/null; {cmd}\''
     print(f"$ {cmd}")
-    stdin, stdout, stderr = client.exec_command(cmd)
+    stdin, stdout, stderr = client.exec_command(full_cmd)
     if stream:
         for line in iter(stdout.readline, ""):
             print(line, end="")
