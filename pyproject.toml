@@ -23,3 +23,7 @@ dev = [
     "ruff",
     "pytest",
 ]
+runpod = [
+    "runpod",
+    "paramiko",
+]

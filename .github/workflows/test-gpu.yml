@@ -1,0 +1,147 @@
+# WARNING: Do NOT change to pull_request_target - that would expose secrets to fork PRs
+name: Run GPU tests (RunPod)
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+concurrency:
+  group: gpu-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  RUNPOD_IMAGE: "runpod/pytorch:1.0.3-cu1281-torch260-ubuntu2204"
+  RUNPOD_GPU: "NVIDIA GeForce RTX 4090"
+
+jobs:
+  testgpt2-gpu:
+    name: Test GPT2 (small, medium) on GPU
+    if: ${{ github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        run: uv python install
+
+      - name: Install dependencies
+        run: uv sync --group runpod
+
+      - name: Run GPU tests
+        env:
+          RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
+        run: |
+          uv run --group runpod python scripts/runpod_test.py \
+            --pod-name "ci-gpt2-gpu-${{ github.run_id }}" \
+            --image "$RUNPOD_IMAGE" \
+            --gpu-type "$RUNPOD_GPU" \
+            --commit "${{ github.sha }}" \
+            --test-commands '[
+              "pytest tests/test_gpt2.py",
+              "SDPA=0 pytest tests/test_gpt2.py"
+            ]'
+
+  testllama3-gpu:
+    name: Test Llama3.2 (1B) on GPU
+    if: ${{ github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        run: uv python install
+
+      - name: Install dependencies
+        run: uv sync --group runpod
+
+      - name: Run GPU tests
+        env:
+          RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN_READONLY }}
+        run: |
+          uv run --group runpod python scripts/runpod_test.py \
+            --pod-name "ci-llama3-gpu-${{ github.run_id }}" \
+            --image "$RUNPOD_IMAGE" \
+            --gpu-type "$RUNPOD_GPU" \
+            --commit "${{ github.sha }}" \
+            --test-commands '[
+              "SDPA=1 pytest -k test_llama_3_dot_2_1B tests/test_llama3.py",
+              "SDPA=0 pytest -k test_llama_3_dot_2_1B tests/test_llama3.py"
+            ]'
+
+  testqwen2-gpu:
+    name: Test Qwen2 and Qwen2.5 (0.5B) on GPU
+    if: ${{ github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        run: uv python install
+
+      - name: Install dependencies
+        run: uv sync --group runpod
+
+      - name: Run GPU tests
+        env:
+          RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN_READONLY }}
+        run: |
+          uv run --group runpod python scripts/runpod_test.py \
+            --pod-name "ci-qwen2-gpu-${{ github.run_id }}" \
+            --image "$RUNPOD_IMAGE" \
+            --gpu-type "$RUNPOD_GPU" \
+            --commit "${{ github.sha }}" \
+            --test-commands '[
+              "pytest tests/test_qwen2.py::TestQwen2Configs",
+              "pytest -k inputs tests/test_qwen2.py::TestQwen2InstructGreedy",
+              "SDPA=1 pytest -k completion tests/test_qwen2.py::TestQwen2InstructGreedy",
+              "SDPA=0 pytest -k completion tests/test_qwen2.py::TestQwen2InstructGreedy"
+            ]'
+
+  testvisionmodels-gpu:
+    name: Test vision models on GPU
+    if: ${{ github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        run: uv python install
+
+      - name: Install dependencies
+        run: uv sync --group runpod
+
+      - name: Run GPU tests
+        env:
+          RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
+        run: |
+          uv run --group runpod python scripts/runpod_test.py \
+            --pod-name "ci-vision-gpu-${{ github.run_id }}" \
+            --image "$RUNPOD_IMAGE" \
+            --gpu-type "$RUNPOD_GPU" \
+            --commit "${{ github.sha }}" \
+            --test-commands '[
+              "pytest tests/test_alexnet.py tests/test_resnet.py"
+            ]'
