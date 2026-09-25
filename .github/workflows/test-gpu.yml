@@ -24,127 +24,178 @@ jobs:
     name: Test GPT2 (small, medium) on GPU
     if: ${{ github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # must stay above DEFAULT_SETUP_TIMEOUT + DEFAULT_TEST_TIMEOUT in scripts/runpod_test.py, so the
+    # script's own timeouts fire first and `Terminate pod` runs as a normal step
+    timeout-minutes: 30
+    env:
+      POD_NAME: "ci-gpt2-gpu-${{ github.run_id }}"
+      TEST_COMMANDS: >-
+        [
+        "pytest tests/test_gpt2.py",
+        "SDPA=0 pytest tests/test_gpt2.py"
+        ]
     steps:
       - uses: actions/checkout@v5
 
+      # uv is only here for the orchestrator's own deps (paramiko, runpod). Everything the tests
+      # need is installed on the pod, so --only-group skips the project deps (torch et al).
       - name: Install uv
         uses: astral-sh/setup-uv@v5
 
-      - name: Set up Python
-        run: uv python install
-
-      - name: Install dependencies
-        run: uv sync --group runpod
-
-      - name: Run GPU tests
+      - name: Setup GPU env
         env:
           RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
           # gpt2 is a public repo, but anonymous Hub downloads from the pod get rejected
           HF_TOKEN: ${{ secrets.HF_TOKEN_READONLY }}
         run: |
-          uv run --group runpod python scripts/runpod_test.py \
-            --pod-name "ci-gpt2-gpu-${{ github.run_id }}" \
+          uv run --only-group runpod python scripts/runpod_test.py setup \
+            --pod-name "$POD_NAME" \
             --image "$RUNPOD_IMAGE" \
             --gpu-type "$RUNPOD_GPU" \
             --commit "${{ github.sha }}" \
-            --test-commands '[
-              "pytest tests/test_gpt2.py",
-              "SDPA=0 pytest tests/test_gpt2.py"
-            ]'
+            --test-commands "$TEST_COMMANDS"
+
+      - name: Run GPU tests
+        run: |
+          uv run --only-group runpod python scripts/runpod_test.py test \
+            --test-commands "$TEST_COMMANDS"
+
+      - name: Terminate pod
+        if: always()
+        env:
+          RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
+        run: |
+          uv run --only-group runpod python scripts/runpod_test.py teardown \
+            --pod-name "$POD_NAME"
 
   testllama3-gpu:
     name: Test Llama3.2 (1B) on GPU
     if: ${{ github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # see the note on timeout-minutes in testgpt2-gpu
+    timeout-minutes: 30
+    env:
+      POD_NAME: "ci-llama3-gpu-${{ github.run_id }}"
+      TEST_COMMANDS: >-
+        [
+        "SDPA=1 pytest -k test_llama_3_dot_2_1B tests/test_llama3.py",
+        "SDPA=0 pytest -k test_llama_3_dot_2_1B tests/test_llama3.py"
+        ]
     steps:
       - uses: actions/checkout@v5
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
 
-      - name: Set up Python
-        run: uv python install
-
-      - name: Install dependencies
-        run: uv sync --group runpod
-
-      - name: Run GPU tests
+      - name: Setup GPU env
         env:
           RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
           HF_TOKEN: ${{ secrets.HF_TOKEN_READONLY }}
         run: |
-          uv run --group runpod python scripts/runpod_test.py \
-            --pod-name "ci-llama3-gpu-${{ github.run_id }}" \
+          uv run --only-group runpod python scripts/runpod_test.py setup \
+            --pod-name "$POD_NAME" \
             --image "$RUNPOD_IMAGE" \
             --gpu-type "$RUNPOD_GPU" \
             --commit "${{ github.sha }}" \
-            --test-commands '[
-              "SDPA=1 pytest -k test_llama_3_dot_2_1B tests/test_llama3.py",
-              "SDPA=0 pytest -k test_llama_3_dot_2_1B tests/test_llama3.py"
-            ]'
+            --test-commands "$TEST_COMMANDS"
+
+      - name: Run GPU tests
+        run: |
+          uv run --only-group runpod python scripts/runpod_test.py test \
+            --test-commands "$TEST_COMMANDS"
+
+      - name: Terminate pod
+        if: always()
+        env:
+          RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
+        run: |
+          uv run --only-group runpod python scripts/runpod_test.py teardown \
+            --pod-name "$POD_NAME"
 
   testqwen2-gpu:
     name: Test Qwen2 and Qwen2.5 (0.5B) on GPU
     if: ${{ github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # see the note on timeout-minutes in testgpt2-gpu
+    timeout-minutes: 30
+    env:
+      POD_NAME: "ci-qwen2-gpu-${{ github.run_id }}"
+      TEST_COMMANDS: >-
+        [
+        "pytest tests/test_qwen2.py::TestQwen2Configs",
+        "pytest -k inputs tests/test_qwen2.py::TestQwen2InstructGreedy",
+        "SDPA=1 pytest -k completion tests/test_qwen2.py::TestQwen2InstructGreedy",
+        "SDPA=0 pytest -k completion tests/test_qwen2.py::TestQwen2InstructGreedy"
+        ]
     steps:
       - uses: actions/checkout@v5
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
 
-      - name: Set up Python
-        run: uv python install
-
-      - name: Install dependencies
-        run: uv sync --group runpod
-
-      - name: Run GPU tests
+      - name: Setup GPU env
         env:
           RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
           HF_TOKEN: ${{ secrets.HF_TOKEN_READONLY }}
         run: |
-          uv run --group runpod python scripts/runpod_test.py \
-            --pod-name "ci-qwen2-gpu-${{ github.run_id }}" \
+          uv run --only-group runpod python scripts/runpod_test.py setup \
+            --pod-name "$POD_NAME" \
             --image "$RUNPOD_IMAGE" \
             --gpu-type "$RUNPOD_GPU" \
             --commit "${{ github.sha }}" \
-            --test-commands '[
-              "pytest tests/test_qwen2.py::TestQwen2Configs",
-              "pytest -k inputs tests/test_qwen2.py::TestQwen2InstructGreedy",
-              "SDPA=1 pytest -k completion tests/test_qwen2.py::TestQwen2InstructGreedy",
-              "SDPA=0 pytest -k completion tests/test_qwen2.py::TestQwen2InstructGreedy"
-            ]'
+            --test-commands "$TEST_COMMANDS"
+
+      - name: Run GPU tests
+        run: |
+          uv run --only-group runpod python scripts/runpod_test.py test \
+            --test-commands "$TEST_COMMANDS"
+
+      - name: Terminate pod
+        if: always()
+        env:
+          RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
+        run: |
+          uv run --only-group runpod python scripts/runpod_test.py teardown \
+            --pod-name "$POD_NAME"
 
   testvisionmodels-gpu:
     name: Test vision models on GPU
     if: ${{ github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # see the note on timeout-minutes in testgpt2-gpu
+    timeout-minutes: 30
+    env:
+      POD_NAME: "ci-vision-gpu-${{ github.run_id }}"
+      TEST_COMMANDS: >-
+        [
+        "pytest tests/test_alexnet.py tests/test_resnet.py"
+        ]
     steps:
       - uses: actions/checkout@v5
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
 
-      - name: Set up Python
-        run: uv python install
-
-      - name: Install dependencies
-        run: uv sync --group runpod
-
-      - name: Run GPU tests
+      - name: Setup GPU env
         env:
           RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
         run: |
-          uv run --group runpod python scripts/runpod_test.py \
-            --pod-name "ci-vision-gpu-${{ github.run_id }}" \
+          uv run --only-group runpod python scripts/runpod_test.py setup \
+            --pod-name "$POD_NAME" \
             --image "$RUNPOD_IMAGE" \
             --gpu-type "$RUNPOD_GPU" \
             --commit "${{ github.sha }}" \
-            --test-commands '[
-              "pytest tests/test_alexnet.py tests/test_resnet.py"
-            ]'
+            --test-commands "$TEST_COMMANDS"
+
+      - name: Run GPU tests
+        run: |
+          uv run --only-group runpod python scripts/runpod_test.py test \
+            --test-commands "$TEST_COMMANDS"
+
+      - name: Terminate pod
+        if: always()
+        env:
+          RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
+        run: |
+          uv run --only-group runpod python scripts/runpod_test.py teardown \
+            --pod-name "$POD_NAME"
