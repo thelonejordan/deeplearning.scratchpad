@@ -30,8 +30,10 @@
 ## Setup
 
 ```shell
-uv sync              # install dependencies
-uv sync --group dev  # include dev tools (pytest, ruff, notebook, etc.)
+uv venv				  # create virtual environment
+uv sync               # install dependencies
+uv sync --group dev   # include dev tools (pytest, ruff, notebook, etc.)
+uv sync --all-groups  # include all groups
 ```
 
 ## Test

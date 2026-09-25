@@ -39,4 +39,5 @@ exclude = [
   "tests/",
   "scratchpad/",
   "assets/",
+  "scripts/",
 ]
