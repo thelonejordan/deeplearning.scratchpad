@@ -16,8 +16,30 @@ import paramiko
 import runpod
 
 REPO_URL = "https://github.com/thelonejordan/deeplearning.scratchpad.git"
-DEFAULT_IMAGE = "runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04"
+DEFAULT_IMAGE = "runpod/pytorch:1.3.3-cu1281-torch2130-ubuntu2204"
 DEFAULT_GPU = "NVIDIA RTX 4000 Ada Generation"
+
+# Pinned to match uv.lock. Unpinned installs resolve against the image's preinstalled torch,
+# which broke CI once already: transformers raised its floor from torch>=2.4 to torch>=2.5, so
+# `is_torch_available()` started returning False on an image shipping torch 2.4.1 and every
+# test that touches transformers failed with "PyTorch is not installed".
+POD_PACKAGES = [
+    "transformers==5.4.0",
+    "accelerate==1.13.0",
+    "huggingface-hub[hf_xet]==1.8.0",
+    "hf-xet==1.4.2",
+    "hf-transfer==0.1.9",
+    "tiktoken==0.12.0",
+    "sentencepiece==0.2.1",
+    "blobfile==3.2.0",
+    "requests==2.33.0",
+    "protobuf==7.34.1",
+    "pytest==9.0.2",
+]
+
+# Xet-backed downloads 404 on `api/models/<repo>/xet-read-token/<rev>` from inside pods even for
+# public repos; the plain Hub download path works. Drop this once that is fixed upstream.
+POD_TEST_ENV = {"HF_HUB_DISABLE_XET": "1"}
 GPU_FALLBACKS = [
     "NVIDIA RTX 4000 Ada Generation",
     "NVIDIA GeForce RTX 4090",
@@ -140,8 +162,10 @@ def run_tests_on_pod(host, port, commit_sha, test_commands, ssh_key_path, hf_tok
         ssh_exec(client, f"git clone {REPO_URL} /workspace/repo")
         ssh_exec(client, f"cd /workspace/repo && git checkout {commit_sha}")
 
-        # Install dependencies (system Python already has torch+CUDA, don't touch those)
-        ssh_exec(client, "pip install transformers accelerate huggingface-hub[hf_xet] tiktoken sentencepiece blobfile requests protobuf hf-transfer pytest")
+        # Install dependencies (image Python already has torch+CUDA, don't touch those).
+        # `python`/`pip` point at the interpreter torch is installed for, `python3` does not.
+        packages = " ".join(POD_PACKAGES)
+        ssh_exec(client, f"python -m pip install --break-system-packages {packages}")
 
         # HuggingFace login via token file (Docker ENV not available in SSH sessions)
         if hf_token:
@@ -151,19 +175,21 @@ def run_tests_on_pod(host, port, commit_sha, test_commands, ssh_key_path, hf_tok
             sftp.close()
             print(f"Uploaded HF token ({len(hf_token)} chars, starts with {hf_token[:4]}...)")
             ssh_exec(client, "cat /tmp/hf_token | wc -c")
-            ssh_exec(client, "python3 -c 'import huggingface_hub; huggingface_hub.login(open(\"/tmp/hf_token\").read().strip())' && rm /tmp/hf_token")
-            ssh_exec(client, "python3 -c 'import huggingface_hub; print(huggingface_hub.whoami())'")
+            ssh_exec(client, "python -c 'import huggingface_hub; huggingface_hub.login(open(\"/tmp/hf_token\").read().strip())' && rm /tmp/hf_token")
+            ssh_exec(client, "python -c 'import huggingface_hub; print(huggingface_hub.whoami())'")
         else:
             print("WARNING: No HF_TOKEN provided, skipping HuggingFace login")
 
         # Display environment
         ssh_exec(client, "nvidia-smi")
         ssh_exec(client, "cd /workspace/repo && python env.py")
+        ssh_exec(client, "python -m pip list | grep -Ei 'torch|transformers|huggingface|tokenizers|accelerate'")
 
         # Run test commands
+        env_prefix = "".join(f"{k}={v} " for k, v in POD_TEST_ENV.items())
         final_exit_code = 0
         for cmd in test_commands:
-            full_cmd = f"cd /workspace/repo && {cmd}"
+            full_cmd = f"cd /workspace/repo && {env_prefix}{cmd}"
             exit_code = ssh_exec(client, full_cmd)
             if exit_code != 0:
                 print(f"FAILED (exit {exit_code}): {cmd}")

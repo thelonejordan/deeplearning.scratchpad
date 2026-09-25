@@ -3,8 +3,10 @@ name = "deeplearning-scratchpad"
 version = "0.0.1"
 requires-python = ">=3.11"
 dependencies = [
-    "torch",
-    "torchvision",
+    # keep in sync with RUNPOD_IMAGE in .github/workflows/test-gpu.yml: GPU CI runs against the
+    # torch preinstalled in that image, so pinning here keeps CPU and GPU CI on the same version
+    "torch==2.13.0",
+    "torchvision==0.28.0",
     "huggingface-hub[hf_xet]",
     "transformers[torch]",
     "tiktoken",
